@@ -7,7 +7,7 @@
 ```bash
 pkg install wget
 wget -O ~/install_majordomo.sh \
-    https://raw.githubusercontent.com/YOUR_USER/majordomo-android/main/install_majordomo_termux.sh
+    https://raw.githubusercontent.com/artt652/majordomo-android/main/install_majordomo_termux.sh
 chmod +x ~/install_majordomo.sh
 bash ~/install_majordomo.sh
 ```
