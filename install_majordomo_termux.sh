@@ -25,7 +25,7 @@ read -r MYSQL_PASS
 echo ""
 echo ">>> ШАГ 1: Установка пакетов..."
 pkg update -y
-pkg install -y git mariadb php php-fpm lighttpd redis phpmyadmin wget composer
+pkg install -y git mariadb php php-fpm php-gd lighttpd redis phpmyadmin wget composer
 
 echo "Проверка PHP расширений:"
 php -m | grep -E "curl|mbstring|xml|pdo|mysqli" || true
@@ -43,7 +43,7 @@ opcache.enable_cli=0
 
 ; Подавляем некритичные ошибки — они роняют циклы на PHP 8
 ; E_ERROR и E_PARSE остаются видимыми
-error_reporting = E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED & ~E_STRICT
+error_reporting = E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED
 display_errors = Off
 log_errors = On
 EOF
@@ -137,17 +137,17 @@ wget -q -O "$HTDOCS/lib/redis_compat.php" \
     && echo "redis_compat.php скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать redis_compat.php"
 
-# Скачиваем tinyfilemanager в корень htdocs
+# Скачиваем tinyfilemanager в корень htdocs/tools/
 echo "Скачивание tinyfilemanager..."
-wget -q -O "$HTDOCS/tinyfilemanager.php"     "https://raw.githubusercontent.com/prasathmani/tinyfilemanager/master/tinyfilemanager.php"     && echo "tinyfilemanager.php скачан"     || echo "ВНИМАНИЕ: не удалось скачать tinyfilemanager.php"
+wget -q -O "$HTDOCS/tools/tinyfilemanager.php"     "https://raw.githubusercontent.com/prasathmani/tinyfilemanager/master/tinyfilemanager.php"     && echo "tinyfilemanager.php скачан"     || echo "ВНИМАНИЕ: не удалось скачать tinyfilemanager.php"
 
 # Скачиваем Redis монитор
-wget -q -O "$HTDOCS/redis_api.php" \
+wget -q -O "$HTDOCS/tools/redis_api.php" \
     "https://raw.githubusercontent.com/artt652/majordomo-android/main/htdocs/redis_api.php" \
     && echo "redis_api.php скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать redis_api.php"
 
-wget -q -O "$HTDOCS/redis_monitor.html" \
+wget -q -O "$HTDOCS/tools/redis_monitor.html" \
     "https://raw.githubusercontent.com/artt652/majordomo-android/main/htdocs/redis_monitor.html" \
     && echo "redis_monitor.html скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать redis_monitor.html"
@@ -166,7 +166,7 @@ cat > "$HTDOCS/config.php" << CONFIGEOF
 Define('DB_HOST', '127.0.0.1');
 Define('DB_NAME', 'db_terminal');
 Define('DB_USER', 'root');
-Define('DB_PASSWORD', '$MYSQL_PASS');
+Define('DB_PASSWORD', '123');
 
 Define('DIR_TEMPLATES', "./templates/");
 Define('DIR_MODULES', "./modules/");
@@ -179,17 +179,18 @@ Define('PROJECT_BUGTRACK', "bugtrack@smartliving.ru");
 date_default_timezone_set('UTC');
 
 Define('DOC_ROOT', dirname(__FILE__));
-Define('SERVER_ROOT', '$HTDOCS');
+Define('SERVER_ROOT', '/data/data/com.termux/files/home/htdocs');
 Define('PATH_TO_PHP', 'php');
 Define('PATH_TO_MYSQLDUMP', 'mariadb-dump');
+Define('PATH_TO_MYSQL', 'mariadb');
 
 Define('BASE_URL', 'http://127.0.0.1:8080');
 
 Define('ROOT', DOC_ROOT."/");
 Define('ROOTHTML', "/");
-Define('PROJECT_DOMAIN', isset(\$_SERVER['SERVER_NAME']) ? \$_SERVER['SERVER_NAME'] : php_uname("n"));
+Define('PROJECT_DOMAIN', isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : php_uname("n"));
 
-\$restart_threads = array(
+$restart_threads = array(
     'cycle_execs.php',
     'cycle_main.php',
     'cycle_ping.php',
@@ -204,18 +205,16 @@ Define('MASTER_UPDATE_URL', GIT_URL.'archive/alpha.tar.gz');
 Define('GETURL_WARNING_TIMEOUT', 5);
 Define('ENABLE_PANEL_ACCELERATION', 1);
 
-// Путь к папке бэкапов — без этого каждый запуск cycle_main
-// делает полный CHECK TABLE всех таблиц (~3 минуты)
-Define('SETTINGS_BACKUP_PATH', '$HTDOCS/backup/');
-
 // Redis через Predis враппер (php-redis несовместим с Termux PHP API)
+define('USE_REDIS', '127.0.0.1');
+
 if (file_exists(DOC_ROOT . '/vendor/autoload.php')) {
     require_once DOC_ROOT . '/vendor/autoload.php';
 }
 if (file_exists(DOC_ROOT . '/lib/redis_compat.php')) {
     require_once DOC_ROOT . '/lib/redis_compat.php';
 }
-define('USE_REDIS', '127.0.0.1');
+
 CONFIGEOF
 
 echo "config.php создан"
