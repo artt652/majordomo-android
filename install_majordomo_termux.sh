@@ -9,6 +9,7 @@ PREFIX=/data/data/com.termux/files/usr
 HOME_DIR=/data/data/com.termux/files/home
 HTDOCS="$HOME_DIR/htdocs"
 LOGS="$HTDOCS/cycle_cached"
+REPO="https://raw.githubusercontent.com/artt652/majordomo-android/main"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
@@ -46,8 +47,14 @@ opcache.enable_cli=0
 error_reporting = E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED
 display_errors = Off
 log_errors = On
+
+; Majordomo recommended settings
+post_max_size = 200M
+upload_max_filesize = 50M
+max_file_uploads = 150
+max_input_time = 180
 EOF
-echo "OPcache отключён, error_reporting настроен"
+echo "OPcache отключён, error_reporting и лимиты настроены"
 
 # =============================================================
 # ШАГ 3: Запуск MariaDB
@@ -124,35 +131,51 @@ else
 fi
 
 mkdir -p "$LOGS"
+mkdir -p "$HTDOCS/backup"
 chmod -R 777 "$HTDOCS"
 
 # Устанавливаем Predis — чистый PHP клиент Redis (без расширения php-redis)
 echo "Установка Predis..."
 cd "$HTDOCS"
-composer require predis/predis --quiet     && echo "Predis установлен"     || echo "ВНИМАНИЕ: не удалось установить Predis"
+composer require predis/predis --quiet \
+    && echo "Predis установлен" \
+    || echo "ВНИМАНИЕ: не удалось установить Predis"
 
-# Скачиваем враппер Redis (Predis совместимость)
+# Скачиваем файлы из репозитория
+echo "Скачивание файлов из репозитория..."
 wget -q -O "$HTDOCS/lib/redis_compat.php" \
-    "https://raw.githubusercontent.com/artt652/majordomo-android/main/htdocs/lib/redis_compat.php" \
+    "$REPO/htdocs/lib/redis_compat.php" \
     && echo "redis_compat.php скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать redis_compat.php"
 
-# Скачиваем tinyfilemanager в корень htdocs/tools/
-echo "Скачивание tinyfilemanager..."
-wget -q -O "$HTDOCS/tools/tinyfilemanager.php"     "https://raw.githubusercontent.com/prasathmani/tinyfilemanager/master/tinyfilemanager.php"     && echo "tinyfilemanager.php скачан"     || echo "ВНИМАНИЕ: не удалось скачать tinyfilemanager.php"
+wget -q -O "$HTDOCS/watchdog.sh" \
+    "$REPO/htdocs/watchdog.sh" \
+    && echo "watchdog.sh скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать watchdog.sh"
+chmod +x "$HTDOCS/watchdog.sh"
 
-# Скачиваем Redis монитор
+wget -q -O "$HTDOCS/restart.sh" \
+    "$REPO/htdocs/restart.sh" \
+    && echo "restart.sh скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать restart.sh"
+chmod +x "$HTDOCS/restart.sh"
+
+# Скачиваем инструменты
+mkdir -p "$HTDOCS/tools"
+wget -q -O "$HTDOCS/tools/tinyfilemanager.php" \
+    "https://raw.githubusercontent.com/prasathmani/tinyfilemanager/master/tinyfilemanager.php" \
+    && echo "tinyfilemanager.php скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать tinyfilemanager.php"
+
 wget -q -O "$HTDOCS/tools/redis_api.php" \
-    "https://raw.githubusercontent.com/artt652/majordomo-android/main/htdocs/redis_api.php" \
+    "$REPO/htdocs/tools/redis_api.php" \
     && echo "redis_api.php скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать redis_api.php"
 
 wget -q -O "$HTDOCS/tools/redis_monitor.html" \
-    "https://raw.githubusercontent.com/artt652/majordomo-android/main/htdocs/redis_monitor.html" \
+    "$REPO/htdocs/tools/redis_monitor.html" \
     && echo "redis_monitor.html скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать redis_monitor.html"
-
-echo "Redis монитор: http://IP:8080/redis_monitor.html"
 
 # =============================================================
 # ШАГ 7: Настройка config.php
@@ -160,13 +183,12 @@ echo "Redis монитор: http://IP:8080/redis_monitor.html"
 echo ""
 echo ">>> ШАГ 7: Настройка config.php..."
 
-# Создаём чистый config.php с настройками для Termux
 cat > "$HTDOCS/config.php" << CONFIGEOF
 <?php
 Define('DB_HOST', '127.0.0.1');
 Define('DB_NAME', 'db_terminal');
 Define('DB_USER', 'root');
-Define('DB_PASSWORD', '123');
+Define('DB_PASSWORD', '$MYSQL_PASS');
 
 Define('DIR_TEMPLATES', "./templates/");
 Define('DIR_MODULES', "./modules/");
@@ -179,7 +201,7 @@ Define('PROJECT_BUGTRACK', "bugtrack@smartliving.ru");
 date_default_timezone_set('UTC');
 
 Define('DOC_ROOT', dirname(__FILE__));
-Define('SERVER_ROOT', '/data/data/com.termux/files/home/htdocs');
+Define('SERVER_ROOT', '$HTDOCS');
 Define('PATH_TO_PHP', 'php');
 Define('PATH_TO_MYSQLDUMP', 'mariadb-dump');
 Define('PATH_TO_MYSQL', 'mariadb');
@@ -188,9 +210,9 @@ Define('BASE_URL', 'http://127.0.0.1:8080');
 
 Define('ROOT', DOC_ROOT."/");
 Define('ROOTHTML', "/");
-Define('PROJECT_DOMAIN', isset($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : php_uname("n"));
+Define('PROJECT_DOMAIN', isset(\$_SERVER['SERVER_NAME']) ? \$_SERVER['SERVER_NAME'] : php_uname("n"));
 
-$restart_threads = array(
+\$restart_threads = array(
     'cycle_execs.php',
     'cycle_main.php',
     'cycle_ping.php',
@@ -205,6 +227,9 @@ Define('MASTER_UPDATE_URL', GIT_URL.'archive/alpha.tar.gz');
 Define('GETURL_WARNING_TIMEOUT', 5);
 Define('ENABLE_PANEL_ACCELERATION', 1);
 
+// Termux: отключаем перезапуск MySQL через sudo (нет root)
+define('DISABLE_MYSQL_RESTART', true);
+
 // Redis через Predis враппер (php-redis несовместим с Termux PHP API)
 define('USE_REDIS', '127.0.0.1');
 
@@ -214,7 +239,6 @@ if (file_exists(DOC_ROOT . '/vendor/autoload.php')) {
 if (file_exists(DOC_ROOT . '/lib/redis_compat.php')) {
     require_once DOC_ROOT . '/lib/redis_compat.php';
 }
-
 CONFIGEOF
 
 echo "config.php создан"
@@ -252,46 +276,49 @@ INSERT IGNORE INTO settings (TITLE,NAME,TYPE,NOTES,VALUE,DEFAULTVALUE,DATA)
     VALUES ('Language','SITE_LANGUAGE','text','','ru','ru','');
 INSERT IGNORE INTO settings (TITLE,NAME,TYPE,NOTES,VALUE,DEFAULTVALUE,DATA)
     VALUES ('Time zone','SITE_TIMEZONE','text','','Europe/Moscow','Europe/Moscow','');
+DELETE FROM settings WHERE NAME='BACKUP_PATH';
 SQLEOF
     echo "БД настроена"
 fi
 
-# =============================================================
-# ШАГ 9: Патчи совместимости PHP 8
-# =============================================================
 # =============================================================
 # ШАГ 9: Настройка lighttpd
 # =============================================================
 echo ""
 echo ">>> ШАГ 9: Настройка lighttpd..."
 
-# Путь к phpMyAdmin (реальный путь в Termux)
 PMA_PATH="$PREFIX/share/phpmyadmin"
-# Проверяем что папка существует
 if [ ! -d "$PMA_PATH" ]; then
     PMA_PATH=$(find $PREFIX/share -name "index.php" 2>/dev/null | grep -i phpmyadmin | head -1 | xargs dirname)
 fi
 
 mkdir -p $PREFIX/etc/lighttpd
 
-# Скачиваем конфиг lighttpd
 wget -q -O $PREFIX/etc/lighttpd/lighttpd.conf \
-    "https://raw.githubusercontent.com/artt652/majordomo-android/main/config/lighttpd.conf" \
+    "$REPO/config/lighttpd.conf" \
     && echo "lighttpd.conf скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать lighttpd.conf"
 
-# Подставляем реальный путь к htdocs и phpMyAdmin
 sed -i "s|HTDOCS_PATH|$HTDOCS|g" $PREFIX/etc/lighttpd/lighttpd.conf
-PMA_PATH="$PREFIX/share/phpmyadmin"
 sed -i "s|PMA_PATH|$PMA_PATH|g" $PREFIX/etc/lighttpd/lighttpd.conf
 
-echo "lighttpd.conf создан (phpMyAdmin: http://IP:8080/phpmyadmin)"
+echo "lighttpd.conf настроен (phpMyAdmin: http://IP:8080/phpmyadmin)"
 
-# Скачиваем конфиг phpMyAdmin (TCP подключение)
-wget -q -O $PREFIX/share/phpmyadmin/config.inc.php \
-    "https://raw.githubusercontent.com/artt652/majordomo-android/main/config/phpmyadmin_config.inc.php" \
-    && echo "phpMyAdmin config.inc.php скачан" \
-    || echo "ВНИМАНИЕ: не удалось скачать конфиг phpMyAdmin"
+# Настройка phpMyAdmin для TCP подключения
+cat > $PREFIX/share/phpmyadmin/config.inc.php << 'PMAEOF'
+<?php
+$cfg['blowfish_secret'] = 'majordomo_termux_secret_key_32ch';
+$i = 0;
+$i++;
+$cfg['Servers'][$i]['auth_type'] = 'cookie';
+$cfg['Servers'][$i]['host'] = '127.0.0.1';
+$cfg['Servers'][$i]['port'] = 3306;
+$cfg['Servers'][$i]['connect_type'] = 'tcp';
+$cfg['Servers'][$i]['compress'] = false;
+$cfg['Servers'][$i]['AllowNoPassword'] = false;
+$cfg['TempDir'] = '/data/data/com.termux/files/home/htdocs/cycle_cached/pma_tmp';
+PMAEOF
+mkdir -p "$HTDOCS/cycle_cached/pma_tmp"
 echo "phpMyAdmin: config.inc.php создан"
 
 # =============================================================
@@ -300,7 +327,7 @@ echo "phpMyAdmin: config.inc.php создан"
 echo ""
 echo ">>> ШАГ 10: Создание автозапуска..."
 mkdir -p "$HOME_DIR/.termux/boot"
-cat > "$HOME_DIR/.termux/boot/majordomo.sh" << BOOTEOF
+cat > "$HOME_DIR/.termux/boot/majordomo.sh" << 'BOOTEOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Автозапуск Majordomo (Termux:Boot — установить из F-Droid)
 
@@ -316,43 +343,35 @@ pkill -f "scripts/cycle" 2>/dev/null
 sleep 2
 
 # MariaDB
-mariadbd-safe --datadir=\$PREFIX/var/lib/mysql > /dev/null 2>&1 &
+mariadbd-safe --datadir=$PREFIX/var/lib/mysql > /dev/null 2>&1 &
 sleep 8
 
 # Redis
 redis-server > /dev/null 2>&1 &
 sleep 1
 
-# php-cgi через unix socket — ДОЛЖЕН запускаться ДО lighttpd!
-PHP_INI_SCAN_DIR=\$PREFIX/etc/php/conf.d \
-    php-cgi -b \$PREFIX/var/run/php-cgi.sock > /dev/null 2>&1 &
+# php-cgi через TCP (SELinux на Android блокирует Unix socket для дочерних процессов)
+PHP_FCGI_CHILDREN=4 \
+PHP_FCGI_MAX_REQUESTS=500 \
+PHP_INI_SCAN_DIR=$PREFIX/etc/php/conf.d \
+    php-cgi -b 127.0.0.1:9000 > /dev/null 2>&1 &
 sleep 3
 
 # lighttpd
-lighttpd -f \$PREFIX/etc/lighttpd/lighttpd.conf
+lighttpd -f $PREFIX/etc/lighttpd/lighttpd.conf
 sleep 2
 
 # Основной цикл Majordomo
-nohup php -d opcache.enable=0 \$HTDOCS/cycle.php \
-    > \$HTDOCS/cycle_cached/cycle.log 2>&1 &
-echo \$! > \$HTDOCS/cycle_cached/cycle.php.lock
+nohup php -d opcache.enable=0 $HTDOCS/cycle.php \
+    > $HTDOCS/cycle_cached/cycle.log 2>&1 &
+echo $! > $HTDOCS/cycle_cached/cycle.php.lock
 
-# Единый watchdog (php-cgi + cycle.php)
-nohup bash \$HTDOCS/watchdog.sh > /dev/null 2>&1 &
+# Watchdog
+nohup bash $HTDOCS/watchdog.sh > /dev/null 2>&1 &
 BOOTEOF
 
 chmod +x "$HOME_DIR/.termux/boot/majordomo.sh"
 echo "Автозапуск: ~/.termux/boot/majordomo.sh"
-
-# Скачиваем watchdog
-wget -q -O "$HTDOCS/watchdog.sh" \
-    "https://raw.githubusercontent.com/artt652/majordomo-android/main/htdocs/watchdog.sh" \
-    && echo "watchdog.sh скачан" \
-    || echo "ВНИМАНИЕ: не удалось скачать watchdog.sh"
-chmod +x "$HTDOCS/watchdog.sh"
-echo "Watchdog создан: ~/htdocs/watchdog.sh"
-
-
 
 # =============================================================
 # ШАГ 11: Запуск сервисов
@@ -360,15 +379,16 @@ echo "Watchdog создан: ~/htdocs/watchdog.sh"
 echo ""
 echo ">>> ШАГ 11: Запуск сервисов..."
 
-pkill -f "php.*-S 0.0.0.0" 2>/dev/null || true
 pkill php-cgi 2>/dev/null || true
 pkill lighttpd 2>/dev/null || true
 pkill -f "cycle.php" 2>/dev/null || true
 sleep 2
 
-# php-cgi (ДО lighttpd!)
+# php-cgi через TCP (ДО lighttpd!)
+PHP_FCGI_CHILDREN=4 \
+PHP_FCGI_MAX_REQUESTS=500 \
 PHP_INI_SCAN_DIR=$PREFIX/etc/php/conf.d \
-    php-cgi -b $PREFIX/var/run/php-cgi.sock > /dev/null 2>&1 &
+    php-cgi -b 127.0.0.1:9000 > /dev/null 2>&1 &
 sleep 3
 ps aux | grep -q "[p]hp-cgi" && echo "php-cgi: OK" || {
     echo "ОШИБКА: php-cgi не запустился!"
@@ -391,7 +411,6 @@ nohup php -d opcache.enable=0 "$HTDOCS/cycle.php" \
 CYC_PID=$!
 echo "$CYC_PID" > "$LOGS/cycle.php.lock"
 
-# Ждём до 3 минут — cycle.php делает CHECK TABLE при первом запуске
 echo "Ожидание запуска cycle.php (CHECK TABLE ~3 мин при первом запуске)..."
 WAITED=0
 while [ $WAITED -lt 180 ]; do
@@ -403,12 +422,11 @@ while [ $WAITED -lt 180 ]; do
     fi
     if [ $WAITED -ge 180 ]; then
         echo "ВНИМАНИЕ: cycle.php не запустился за 3 минуты. Watchdog перезапустит автоматически."
-        echo "Лог:"
         tail -5 "$LOGS/cycle.log"
     fi
 done
 
-# Единый watchdog
+# Watchdog
 pkill -f watchdog 2>/dev/null || true
 sleep 1
 nohup bash "$HTDOCS/watchdog.sh" > /dev/null 2>&1 &
@@ -430,19 +448,21 @@ mariadb -u root -p"$MYSQL_PASS" -e \
     "SELECT COUNT(*) as 'Таблиц в БД' FROM information_schema.tables \
      WHERE table_schema='db_terminal';" 2>/dev/null
 
-IP=$(ifconfig 2>/dev/null | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1)
+IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || \
+     ifconfig 2>/dev/null | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1)
 
 echo ""
 echo "╔════════════════════════════════════════════════════╗"
 echo "║            Установка завершена!                    ║"
 echo "╠════════════════════════════════════════════════════╣"
-echo "║  Majordomo:   http://$IP:8080              ║"
-echo "║  phpMyAdmin:  http://$IP:8080/phpmyadmin   ║"
+echo "║  Majordomo:   http://$IP:8080"
+echo "║  phpMyAdmin:  http://$IP:8080/phpmyadmin"
+echo "║  Перезапуск:  bash ~/htdocs/restart.sh"
 echo "╠════════════════════════════════════════════════════╣"
-echo "║  Логи:                                             ║"
-echo "║  Веб:   ~/htdocs/cycle_cached/lighttpd_error.log  ║"
-echo "║  Цикл:  ~/htdocs/cycle_cached/cycle.log           ║"
+echo "║  Логи:"
+echo "║  Веб:   ~/htdocs/cycle_cached/lighttpd_error.log"
+echo "║  Цикл:  ~/htdocs/cycle_cached/cycle.log"
 echo "╠════════════════════════════════════════════════════╣"
-echo "║  Установите Termux:Boot из F-Droid                 ║"
-echo "║  для автозапуска после перезагрузки!               ║"
+echo "║  Установите Termux:Boot из F-Droid"
+echo "║  для автозапуска после перезагрузки!"
 echo "╚════════════════════════════════════════════════════╝"
