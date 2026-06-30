@@ -193,6 +193,18 @@ wget -q -O "$HTDOCS/restart.sh" \
     || echo "ВНИМАНИЕ: не удалось скачать restart.sh"
 chmod +x "$HTDOCS/restart.sh"
 
+wget -q -O "$HTDOCS/start.sh" \
+    "$REPO/htdocs/start.sh" \
+    && echo "start.sh скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать start.sh"
+chmod +x "$HTDOCS/start.sh"
+
+wget -q -O "$HTDOCS/stop.sh" \
+    "$REPO/htdocs/stop.sh" \
+    && echo "stop.sh скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать stop.sh"
+chmod +x "$HTDOCS/stop.sh"
+
 # Скачиваем инструменты
 mkdir -p "$HTDOCS/tools"
 wget -q -O "$HTDOCS/tools/tinyfilemanager.php" \
@@ -209,6 +221,46 @@ wget -q -O "$HTDOCS/tools/redis_monitor.html" \
     "$REPO/htdocs/tools/redis_monitor.html" \
     && echo "redis_monitor.html скачан" \
     || echo "ВНИМАНИЕ: не удалось скачать redis_monitor.html"
+
+wget -q -O "$HTDOCS/tools/log_api.php" \
+    "$REPO/htdocs/tools/log_api.php" \
+    && echo "log_api.php скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать log_api.php"
+
+wget -q -O "$HTDOCS/tools/log_viewer.html" \
+    "$REPO/htdocs/tools/log_viewer.html" \
+    && echo "log_viewer.html скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать log_viewer.html"
+
+wget -q -O "$HTDOCS/tools/process_api.php" \
+    "$REPO/htdocs/tools/process_api.php" \
+    && echo "process_api.php скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать process_api.php"
+
+wget -q -O "$HTDOCS/tools/process_manager.html" \
+    "$REPO/htdocs/tools/process_manager.html" \
+    && echo "process_manager.html скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать process_manager.html"
+
+wget -q -O "$HTDOCS/tools/log_api.php" \
+    "$REPO/htdocs/tools/log_api.php" \
+    && echo "log_api.php скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать log_api.php"
+
+wget -q -O "$HTDOCS/tools/log_viewer.html" \
+    "$REPO/htdocs/tools/log_viewer.html" \
+    && echo "log_viewer.html скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать log_viewer.html"
+
+wget -q -O "$HTDOCS/tools/process_api.php" \
+    "$REPO/htdocs/tools/process_api.php" \
+    && echo "process_api.php скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать process_api.php"
+
+wget -q -O "$HTDOCS/tools/process_manager.html" \
+    "$REPO/htdocs/tools/process_manager.html" \
+    && echo "process_manager.html скачан" \
+    || echo "ВНИМАНИЕ: не удалось скачать process_manager.html"
 
 # =============================================================
 # ШАГ 7: Настройка config.php
@@ -454,7 +506,7 @@ nohup php -d opcache.enable=0 "$HTDOCS/cycle.php" \
 CYC_PID=$!
 echo "$CYC_PID" > "$LOGS/cycle.php.lock"
 
-echo "Ожидание запуска cycle.php..."
+echo "Ожидание запуска cycle.php (CHECK TABLE ~3 мин при первом запуске)..."
 WAITED=0
 while [ $WAITED -lt 180 ]; do
     sleep 5
