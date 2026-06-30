@@ -506,7 +506,7 @@ nohup php -d opcache.enable=0 "$HTDOCS/cycle.php" \
 CYC_PID=$!
 echo "$CYC_PID" > "$LOGS/cycle.php.lock"
 
-echo "Ожидание запуска cycle.php (CHECK TABLE ~3 мин при первом запуске)..."
+echo "Ожидание запуска cycle.php..."
 WAITED=0
 while [ $WAITED -lt 180 ]; do
     sleep 5
