@@ -38,13 +38,16 @@ majordomo-android/
 │       ├── process_api.php        # API для менеджера процессов
 │       └── process_manager.html   # Менеджер процессов
 └── config/
-    ├── lighttpd.conf               # Конфиг веб-сервера (пути подставляются скриптом установки)
-    └── redis.conf                  # Конфиг Redis (RDB снапшоты отключены)
+    ├── lighttpd.conf               # Конфиг веб-сервера (скачивается скриптом установки, пути подставляются)
+    ├── redis.conf                  # Конфиг Redis (скачивается скриптом установки, RDB снапшоты отключены)
+    ├── disable_strict_mode.cnf     # Референс: содержимое идентично тому, что генерирует установщик инлайн
+    ├── opcache_off.ini             # Референс: содержимое идентично тому, что генерирует установщик инлайн
+    └── phpmyadmin_config.inc.php   # Референс: содержимое идентично тому, что генерирует установщик инлайн
 ```
 
 `tinyfilemanager.php` скачивается из апстрима ([prasathmani/tinyfilemanager](https://github.com/prasathmani/tinyfilemanager)) напрямую в `htdocs/tools/` — не хранится в этом репозитории.
 
-OPcache/error_reporting, отключение MySQL strict mode и конфиг phpMyAdmin генерируются скриптом установки на лету (heredoc), отдельными файлами в репозитории не хранятся.
+`disable_strict_mode.cnf`, `opcache_off.ini` и `phpmyadmin_config.inc.php` хранятся в репозитории как референс/бэкап содержимого — сам установщик их не скачивает, а генерирует те же настройки инлайн.
 
 ## Доступ после установки
 
@@ -79,7 +82,7 @@ ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 - **Predis вместо php-redis** → расширение `redis` несовместимо с PHP API Termux; `redis_compat.php` подключается только если `extension_loaded('redis')` вернул `false`, и только если Redis действительно слушает порт (проверка `fsockopen`)
 - **Redis без RDB-снапшотов** → `save ""` в `redis.conf`. Данные в Redis (кэш состояний устройств) нужны только пока система работает и пересоздаются заново при каждом запуске — сохранять их на диск не требуется. К тому же периодические фоновые записи снапшотов на Android без root могут завершаться ошибкой или просто зря нагружать флеш-память.
 - **Watchdog** (`watchdog.sh`) → следит за `php-cgi` и дочерними процессами `cycle_*`, перезапускает при падении; логи в `~/htdocs/cycle_cached/`
-- **`restart.sh` / `start.sh` / `stop.sh`** → ручное управление
+- **`restart.sh` / `start.sh` / `stop.sh`** → ручное управление сервисами
 
 ## Известные ограничения
 
@@ -87,4 +90,4 @@ ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 
 ## Разработка
 
-Android-Termux специфичные патчи (поведение lighttpd, окружение Termux) остаются в этом репозитории. Исправления логики и совместимости с PHP 8, пригодные для всех платформ, отправляются upstream-PR в [sergejey/majordomo](https://github.com/sergejey/majordomo) (ветка `alpha`).
+Android-специфичные патчи (поведение lighttpd, окружение Termux) остаются в этом репозитории. Исправления логики и совместимости с PHP 8, пригодные для всех платформ, отправляются upstream-PR в [sergejey/majordomo](https://github.com/sergejey/majordomo) (ветка `alpha`).
