@@ -127,8 +127,8 @@ fi
 # =============================================================
 echo ""
 echo ">>> ШАГ 5: Отключение MySQL strict mode..."
-mkdir -p $PREFIX/etc/mysql/conf.d
-cat > $PREFIX/etc/mysql/conf.d/disable_strict_mode.cnf << 'EOF'
+mkdir -p $PREFIX/etc/my.cnf.d
+cat > $PREFIX/etc/my.cnf.d/disable_strict_mode.cnf << 'EOF'
 [mysqld]
 sql_mode=IGNORE_SPACE,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
 EOF
