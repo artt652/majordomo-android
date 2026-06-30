@@ -22,10 +22,10 @@ bash ~/install_majordomo.sh
 
 ```
 majordomo-android/
-├── install_majordomo_termux.sh   # Скрипт установки
+├── install_majordomo_termux.sh     # Скрипт установки
 ├── htdocs/
 │   ├── lib/
-│   │   └── redis_compat.php      # Враппер Redis через Predis (используется только если нет ext-redis)
+│   │   └── redis_compat.php       # Враппер Redis через Predis
 │   ├── watchdog.sh                # Watchdog для php-cgi и cycle.php
 │   ├── restart.sh                 # Ручной перезапуск всех сервисов
 │   ├── start.sh                   # Запуск сервисов
@@ -39,10 +39,10 @@ majordomo-android/
 │       └── process_manager.html   # Менеджер процессов
 └── config/
     ├── lighttpd.conf               # Конфиг веб-сервера (скачивается скриптом установки, пути подставляются)
-    ├── redis.conf                  # Конфиг Redis (скачивается скриптом установки, RDB снапшоты отключены)
-    ├── disable_strict_mode.cnf     # Референс: содержимое идентично тому, что генерирует установщик инлайн
-    ├── opcache_off.ini             # Референс: содержимое идентично тому, что генерирует установщик инлайн
-    └── phpmyadmin_config.inc.php   # Референс: содержимое идентично тому, что генерирует установщик инлайн
+    ├── redis.conf                  # Конфиг Redis (скачивается с git)
+    ├── disable_strict_mode.cnf     # Референс: установщик генерирует инлайн
+    ├── opcache_off.ini             # Референс: установщик генерирует инлайн
+    └── phpmyadmin_config.inc.php   # Референс: установщик генерирует инлайн
 ```
 
 `tinyfilemanager.php` скачивается из апстрима ([prasathmani/tinyfilemanager](https://github.com/prasathmani/tinyfilemanager)) напрямую в `htdocs/tools/` — не хранится в этом репозитории.
