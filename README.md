@@ -5,7 +5,7 @@
 ## Быстрая установка
 
 ```bash
-pkg install wget
+pkg install wget -y
 wget -O ~/install_majordomo.sh \
     https://raw.githubusercontent.com/artt652/majordomo-android/main/install_majordomo_termux.sh
 chmod +x ~/install_majordomo.sh
@@ -58,7 +58,6 @@ ifconfig | grep "inet " | grep -v "127.0.0.1"
 - **DB_HOST = 127.0.0.1** (не localhost) → TCP вместо unix socket
 - **Predis вместо php-redis** → php-redis несовместим с PHP API Termux
 - **Watchdog** → следит за php-cgi и cycle.php, логи в DebMes Majordomo
-- **SETTINGS_BACKUP_PATH** → без него CHECK TABLE при каждом старте (~3 мин)
 
 ## Подробная документация
 
