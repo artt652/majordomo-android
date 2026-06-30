@@ -5,462 +5,251 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Redis Monitor — Majordomo</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --border: #21262d;
-    --accent: #58a6ff;
-    --green: #3fb950;
-    --yellow: #d29922;
-    --red: #f85149;
-    --text: #c9d1d9;
-    --muted: #8b949e;
-    --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    min-height: 100vh;
-    padding: 24px 16px;
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .logo-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-    animation: pulse 2s infinite;
-  }
-
-  .logo-dot.red { background: var(--red); box-shadow: 0 0 8px var(--red); animation: none; }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-
-  h1 {
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: -0.3px;
-  }
-
-  .subtitle { color: var(--muted); font-size: 13px; }
-
-  .controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  select, button {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    cursor: pointer;
-  }
-
-  button:hover { border-color: var(--accent); color: var(--accent); }
-  button.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-  }
-
-  .card-label {
-    font-size: 11px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 8px;
-  }
-
-  .card-value {
-    font-family: var(--font-mono);
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--accent);
-  }
-
-  .card-value.green { color: var(--green); }
-  .card-value.yellow { color: var(--yellow); }
-  .card-value.red { color: var(--red); }
-
-  .card-sub {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 4px;
-  }
-
-  .section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 16px;
-    overflow: hidden;
-  }
-
-  .section-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .badge {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 12px;
-    background: var(--border);
-    color: var(--muted);
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-
-  td {
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--border);
-    font-family: var(--font-mono);
-  }
-
-  tr:last-child td { border-bottom: none; }
-
-  td:first-child { color: var(--muted); width: 50%; }
-  td:last-child { color: var(--text); }
-
-  .chart-wrap {
-    padding: 16px;
-    height: 120px;
-    display: flex;
-    align-items: flex-end;
-    gap: 3px;
-  }
-
-  .bar {
-    flex: 1;
-    background: var(--accent);
-    opacity: 0.7;
-    border-radius: 2px 2px 0 0;
-    min-height: 2px;
-    transition: height 0.3s ease;
-  }
-
-  .keys-list {
-    max-height: 240px;
-    overflow-y: auto;
-  }
-
-  .key-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 7px 16px;
-    border-bottom: 1px solid var(--border);
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
-
-  .key-row:last-child { border-bottom: none; }
-  .key-name { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; }
-  .key-val { color: var(--muted); font-size: 11px; }
-
-  .error-box {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid var(--red);
-    border-radius: 8px;
-    padding: 16px;
-    color: var(--red);
-    font-size: 13px;
-    margin-bottom: 16px;
-  }
-
-  .cmd-box {
-    padding: 16px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--muted);
-  }
-
-  .cmd-box code {
-    display: block;
-    background: var(--bg);
-    padding: 12px;
-    border-radius: 6px;
-    margin-top: 8px;
-    color: var(--green);
-    line-height: 1.8;
-  }
-
-  .updated {
-    font-size: 11px;
-    color: var(--muted);
-    font-family: var(--font-mono);
-  }
-
-  @media (max-width: 480px) {
-    .card-value { font-size: 18px; }
-    h1 { font-size: 16px; }
-  }
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surface:#161b22;--border:#21262d;
+  --accent:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;
+  --text:#c9d1d9;--muted:#8b949e;
+  --mono:'JetBrains Mono','Consolas',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;padding:20px 16px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.logo{display:flex;align-items:center;gap:10px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+.dot.red{background:var(--red);box-shadow:0 0 8px var(--red);animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+h1{font-size:17px;font-weight:600}
+.sub{color:var(--muted);font-size:12px}
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+select,button{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px}
+.card-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+.card-value{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--accent)}
+.card-value.green{color:var(--green)}.card-value.yellow{color:var(--yellow)}
+.card-sub{font-size:10px;color:var(--muted);margin-top:3px}
+.section{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;overflow:hidden}
+.sh{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.st{font-size:13px;font-weight:600;flex:1}
+.badge{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:10px;background:var(--border);color:var(--muted)}
+.chart-wrap{padding:14px;height:100px;display:flex;align-items:flex-end;gap:2px}
+.bar{flex:1;opacity:.75;border-radius:2px 2px 0 0;min-height:2px;transition:height .3s}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td{padding:7px 14px;border-bottom:1px solid var(--border);font-family:var(--mono)}
+tr:last-child td{border-bottom:none}
+td:first-child{color:var(--muted);width:45%}
+.keys-list{max-height:400px;overflow-y:auto}
+.key-row{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px}
+.key-row:last-child{border-bottom:none}
+.key-name{color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%}
+.key-val{color:var(--muted)}
+.err{background:rgba(248,81,73,.1);border:1px solid var(--red);border-radius:8px;padding:14px;color:var(--red);font-size:12px;margin-bottom:14px}
+.upd{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.cmd{padding:14px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.cmd code{display:block;background:var(--bg);padding:12px;border-radius:6px;margin-top:8px;color:var(--green);line-height:1.8}
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">
-    <div class="logo-dot" id="statusDot"></div>
-    <div>
-      <h1>Redis Monitor</h1>
-      <div class="subtitle">Majordomo · Termux</div>
-    </div>
+    <div class="dot" id="dot"></div>
+    <div><h1>Redis Monitor</h1><div class="sub">Majordomo · Termux</div></div>
   </div>
   <div class="controls">
-    <select id="interval" onchange="changeInterval()">
-      <option value="2000">2 сек</option>
-      <option value="5000" selected>5 сек</option>
-      <option value="10000">10 сек</option>
-      <option value="30000">30 сек</option>
+    <select id="intv" onchange="chgInterval()">
+      <option value="30000" selected>30 сек</option>
+      <option value="60000">1 мин</option>
+      <option value="0">вручную</option>
     </select>
-    <button onclick="refresh()" id="refreshBtn">↻ Обновить</button>
-    <span class="updated" id="updatedAt"></span>
+    <button onclick="updateStats()">↻ Обновить</button>
+    <button onclick="toggleAuto()" id="autoBtn">⏸ Авто вкл</button>
+    <span class="upd" id="upd"></span>
   </div>
 </header>
 
-<div id="errorBox" class="error-box" style="display:none"></div>
+<div id="err" class="err" style="display:none"></div>
 
-<div class="grid" id="statsGrid">
-  <div class="card">
-    <div class="card-label">Статус</div>
-    <div class="card-value green" id="stat-status">—</div>
-    <div class="card-sub" id="stat-version"></div>
-  </div>
-  <div class="card">
-    <div class="card-label">Hits (попаданий)</div>
-    <div class="card-value" id="stat-hits">—</div>
-    <div class="card-sub" id="stat-hitratio">коэффициент кэша</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Misses (промахов)</div>
-    <div class="card-value yellow" id="stat-misses">—</div>
-    <div class="card-sub">запросы к БД</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Ключей в памяти</div>
-    <div class="card-value" id="stat-keys">—</div>
-    <div class="card-sub" id="stat-mjd-keys">в т.ч. Majordomo</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Память</div>
-    <div class="card-value" id="stat-mem">—</div>
-    <div class="card-sub" id="stat-mem-peak">пик</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Команд/сек</div>
-    <div class="card-value" id="stat-ops">—</div>
-    <div class="card-sub">операций в секунду</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Подключений</div>
-    <div class="card-value" id="stat-clients">—</div>
-    <div class="card-sub" id="stat-total-conn">всего за время</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Uptime</div>
-    <div class="card-value" id="stat-uptime">—</div>
-    <div class="card-sub">дней работы</div>
-  </div>
+<div class="grid">
+  <div class="card"><div class="card-label">Статус</div><div class="card-value green" id="s-status">—</div><div class="card-sub" id="s-ver"></div></div>
+  <div class="card"><div class="card-label">Hit rate</div><div class="card-value" id="s-hits">—</div><div class="card-sub" id="s-hr"></div></div>
+  <div class="card"><div class="card-label">Misses</div><div class="card-value yellow" id="s-miss">—</div><div class="card-sub">запросы к БД</div></div>
+  <div class="card"><div class="card-label">Ключей</div><div class="card-value" id="s-keys">—</div><div class="card-sub">всего в Redis</div></div>
+  <div class="card"><div class="card-label">Память</div><div class="card-value" id="s-mem">—</div><div class="card-sub" id="s-mempeak"></div></div>
+  <div class="card"><div class="card-label">Команд/сек</div><div class="card-value" id="s-ops">—</div><div class="card-sub">операций</div></div>
+  <div class="card"><div class="card-label">Клиентов</div><div class="card-value" id="s-clients">—</div><div class="card-sub" id="s-conn"></div></div>
+  <div class="card"><div class="card-label">Uptime</div><div class="card-value" id="s-up">—</div><div class="card-sub">дней</div></div>
 </div>
 
 <div class="section">
-  <div class="section-header">
-    <span class="section-title">Hit rate (попадания в кэш)</span>
-    <span class="badge" id="chartLabel">последние 30 замеров</span>
-  </div>
+  <div class="sh"><span class="st">Hit rate (история)</span><span class="badge">последние 30 замеров</span></div>
   <div class="chart-wrap" id="chart"></div>
 </div>
 
-<div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
   <div class="section">
-    <div class="section-header">
-      <span class="section-title">Ключи Majordomo</span>
-      <span class="badge" id="mjdKeysCount">0</span>
+    <div class="sh">
+      <span class="st">Ключи Majordomo (mjd:*)</span>
+      <span class="badge" id="keyCnt">—</span>
+      <button onclick="loadKeys()" style="font-size:11px;padding:3px 8px">↻</button>
     </div>
-    <div class="keys-list" id="mjdKeysList"></div>
+    <div class="keys-list" id="keyList">
+      <div style="padding:14px;color:var(--muted);font-size:12px">Загрузка...</div>
+    </div>
   </div>
   <div class="section">
-    <div class="section-header">
-      <span class="section-title">Информация</span>
-    </div>
-    <table id="infoTable"></table>
+    <div class="sh"><span class="st">Информация</span></div>
+    <table id="infoTbl"></table>
   </div>
 </div>
 
 <div class="section">
-  <div class="section-header">
-    <span class="section-title">Команды для терминала</span>
-  </div>
-  <div class="cmd-box">
+  <div class="sh"><span class="st">Команды для терминала</span></div>
+  <div class="cmd">
     Проверить Redis вручную:
     <code>
 redis-cli ping<br>
 redis-cli keys "mjd:*"<br>
 redis-cli info stats | grep "keyspace_hits\|keyspace_misses"<br>
 redis-cli info memory | grep "used_memory_human"<br>
-redis-cli monitor  # живой поток команд (Ctrl+C для выхода)
+redis-cli monitor &nbsp;# живой поток команд (Ctrl+C для выхода)
     </code>
   </div>
 </div>
 
 <script>
-let hitHistory = [];
+let hist = [];
 let timer = null;
+let autoOn = true;
+// Ключи хранятся отдельно — автообновление их НЕ трогает
+let cachedKeys = null;
 
-function formatNumber(n) {
-  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+function fmt(n) {
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
   return String(n);
 }
 
+// Обновление только статистики — ключи не трогаем
 async function updateStats() {
   try {
-    const res = await fetch('redis_api.php?_=' + Date.now());
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const d = await res.json();
-
+    const r = await fetch('redis_api.php?_='+Date.now());
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
     if (d.error) throw new Error(d.error);
 
-    const hitRatio = d.hit_rate;
+    const hr = d.hit_rate;
+    document.getElementById('s-status').textContent = d.status;
+    document.getElementById('s-ver').textContent = 'Redis '+d.version;
+    document.getElementById('s-hits').textContent = fmt(d.hits);
+    document.getElementById('s-hr').textContent = hr+'% hit rate';
+    document.getElementById('s-hits').className = 'card-value '+(hr>80?'green':hr>50?'':'yellow');
+    document.getElementById('s-miss').textContent = fmt(d.misses);
+    document.getElementById('s-keys').textContent = d.keys_total;
+    document.getElementById('s-mem').textContent = d.mem_used;
+    document.getElementById('s-mempeak').textContent = 'пик: '+d.mem_peak;
+    document.getElementById('s-ops').textContent = d.ops_per_sec;
+    document.getElementById('s-clients').textContent = d.clients;
+    document.getElementById('s-conn').textContent = d.total_conn+' всего';
+    document.getElementById('s-up').textContent = d.uptime_days+' дн';
 
-    // Карточки
-    document.getElementById('stat-status').textContent = d.status;
-    document.getElementById('stat-version').textContent = 'Redis ' + d.version;
-    document.getElementById('stat-hits').textContent = formatNumber(d.hits);
-    document.getElementById('stat-hitratio').textContent = hitRatio + '% hit rate';
-    document.getElementById('stat-misses').textContent = formatNumber(d.misses);
-    document.getElementById('stat-keys').textContent = d.keys_total;
-    document.getElementById('stat-mjd-keys').textContent = d.keys_mjd + ' ключей Majordomo';
-    document.getElementById('stat-mem').textContent = d.mem_used;
-    document.getElementById('stat-mem-peak').textContent = 'пик: ' + d.mem_peak;
-    document.getElementById('stat-ops').textContent = d.ops_per_sec;
-    document.getElementById('stat-clients').textContent = d.clients;
-    document.getElementById('stat-total-conn').textContent = d.total_conn + ' всего';
-    document.getElementById('stat-uptime').textContent = d.uptime_days + ' дн';
-
-    // Раскраска
-    const hitsEl = document.getElementById('stat-hits');
-    hitsEl.className = 'card-value ' + (hitRatio > 80 ? 'green' : hitRatio > 50 ? '' : 'yellow');
-
-    // График
-    hitHistory.push(parseFloat(hitRatio));
-    if (hitHistory.length > 30) hitHistory.shift();
+    hist.push(parseFloat(hr));
+    if (hist.length > 30) hist.shift();
     renderChart();
 
-    // Ключи Majordomo
-    document.getElementById('mjdKeysCount').textContent = d.mjd_keys.length;
-    document.getElementById('mjdKeysList').innerHTML = d.mjd_keys.map(({key, value}) => `
-      <div class="key-row">
-        <span class="key-name">${key}</span>
-        <span class="key-val">${value}</span>
-      </div>
-    `).join('') || '<div style="padding:16px;color:var(--muted);font-size:13px">Ключей нет</div>';
+    const si = d.server_info || {};
+    document.getElementById('infoTbl').innerHTML = [
+      ['version', d.version],
+      ['tcp_port', si.tcp_port||'6379'],
+      ['os', si.os||'?'],
+      ['arch_bits', si.arch_bits||'?'],
+      ['redis_mode', si.redis_mode||'?'],
+      ['role', si.role||'master'],
+      ['aof_enabled', si.aof_enabled||'0'],
+      ['mem_rss', si.mem_rss||'?'],
+      ['total_commands', fmt(d.total_commands)],
+    ].map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
 
-    // Таблица инфо
-    const si = d.server_info;
-    const info = [
-      ['tcp_port', si.tcp_port],
-      ['os', si.os],
-      ['arch_bits', si.arch_bits],
-      ['redis_mode', si.redis_mode],
-      ['role', si.role],
-      ['aof_enabled', si.aof_enabled],
-      ['mem_rss', d.mem_rss],
-      ['total_commands', formatNumber(d.total_commands)],
-    ];
-    document.getElementById('infoTable').innerHTML = info.map(([k, v]) =>
-      `<tr><td>${k}</td><td>${v}</td></tr>`
-    ).join('');
+    document.getElementById('upd').textContent = new Date().toLocaleTimeString('ru-RU');
+    document.getElementById('err').style.display = 'none';
+    document.getElementById('dot').className = 'dot';
 
-    document.getElementById('updatedAt').textContent = new Date().toLocaleTimeString('ru-RU');
-    document.getElementById('errorBox').style.display = 'none';
-    document.getElementById('statusDot').className = 'logo-dot';
+    // Ключи НЕ трогаем — они живут в cachedKeys и рендерятся только через loadKeys()
 
   } catch(e) {
-    document.getElementById('errorBox').style.display = 'block';
-    document.getElementById('errorBox').textContent = 'Ошибка: ' + e.message + ' · Проверьте что redis_api.php доступен';
-    document.getElementById('statusDot').className = 'logo-dot red';
+    document.getElementById('err').style.display = 'block';
+    document.getElementById('err').textContent = 'Ошибка: '+e.message;
+    document.getElementById('dot').className = 'dot red';
   }
 }
 
+// Загрузка ключей — только по явному запросу (старт или кнопка ↻)
+async function loadKeys() {
+  document.getElementById('keyList').innerHTML = '<div style="padding:14px;color:var(--muted)">Загрузка...</div>';
+  try {
+    const r = await fetch('redis_api.php?keys=1&_='+Date.now());
+    const d = await r.json();
+    cachedKeys = d.mjd_keys || [];
+    renderKeys(cachedKeys);
+  } catch(e) {
+    document.getElementById('keyList').innerHTML = '<div style="padding:14px;color:var(--red)">Ошибка загрузки</div>';
+  }
+}
+
+function renderKeys(keys) {
+  document.getElementById('keyCnt').textContent = keys.length + ' ключей';
+  document.getElementById('keyList').innerHTML = keys.length
+    ? keys.map(({key,value})=>`
+        <div class="key-row">
+          <span class="key-name" title="${key}">${key}</span>
+          <span class="key-val">${value !== '' ? value : '<em style="opacity:.4">null</em>'}</span>
+        </div>`).join('')
+    : '<div style="padding:14px;color:var(--muted);font-size:12px">Ключей нет</div>';
+}
+
 function renderChart() {
-  const max = Math.max(...hitHistory, 1);
-  const chart = document.getElementById('chart');
-  chart.innerHTML = hitHistory.map((v, i) => {
-    const h = Math.max(2, (v / 100) * 100);
-    const color = v > 80 ? '#3fb950' : v > 50 ? '#58a6ff' : '#d29922';
-    return `<div class="bar" style="height:${h}%;background:${color}" title="${v}%"></div>`;
+  document.getElementById('chart').innerHTML = hist.map(v=>{
+    const h = Math.max(2,(v/100)*100);
+    const c = v>80?'#3fb950':v>50?'#58a6ff':'#d29922';
+    return `<div class="bar" style="height:${h}%;background:${c}" title="${v}%"></div>`;
   }).join('');
 }
 
-function changeInterval() {
-  const ms = parseInt(document.getElementById('interval').value);
+function toggleAuto() {
+  autoOn = !autoOn;
+  const btn = document.getElementById('autoBtn');
+  const ms = parseInt(document.getElementById('intv').value)||30000;
   clearInterval(timer);
-  timer = setInterval(updateStats, ms);
+  if (autoOn && ms > 0) {
+    btn.textContent = '⏸ Авто вкл';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    timer = setInterval(updateStats, ms);
+  } else {
+    autoOn = false;
+    btn.textContent = '▶ Авто выкл';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  }
 }
 
-function refresh() {
-  updateStats();
+function chgInterval() {
+  const ms = parseInt(document.getElementById('intv').value)||30000;
+  clearInterval(timer);
+  if (autoOn && ms > 0) timer = setInterval(updateStats, ms);
 }
 
-// Запуск
+// Старт: статистика + ключи один раз, потом авто только статистику
 updateStats();
-timer = setInterval(updateStats, 5000);
+loadKeys();
+// Автообновление статистики включено по умолчанию
+const btn = document.getElementById('autoBtn');
+btn.style.color = 'var(--green)';
+btn.style.borderColor = 'var(--green)';
+timer = setInterval(updateStats, 30000);
 </script>
-
 
 </body>
 </html>
