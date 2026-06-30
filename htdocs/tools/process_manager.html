@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Majordomo — Process Manager</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap');
+
+  :root {
+    --bg:        #0d1117;
+    --bg2:       #161b22;
+    --bg3:       #21262d;
+    --border:    #30363d;
+    --green:     #00ff88;
+    --red:       #ff4444;
+    --orange:    #ff9900;
+    --blue:      #58a6ff;
+    --text:      #c9d1d9;
+    --text-dim:  #8b949e;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 0.05em;
+  }
+  .logo span { color: var(--text-dim); font-weight: 400; }
+  .platform-badge {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+  }
+  .header-stats { display: flex; gap: 20px; align-items: center; }
+  .hstat { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+  .hstat-val {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+  .hstat-val.ok   { color: var(--green); }
+  .hstat-val.err  { color: var(--red); }
+  .hstat-val.warn { color: var(--orange); }
+  .hstat-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  .auto-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .auto-badge.ticking { color: var(--green); border-color: var(--green-dim, #004d29); }
+  .btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--blue); color: var(--blue); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn .spin { display: inline-block; }
+  .btn.loading .spin { animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── SYSBAR ── */
+  .sysbar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 16px;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .sysbar-item { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+  .sysbar-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    width: 50px;
+  }
+  .progress-wrap { flex: 1; display: flex; align-items: center; gap: 6px; }
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--bg3);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+  .progress-fill.green  { background: var(--green); }
+  .progress-fill.orange { background: var(--orange); }
+  .progress-fill.red    { background: var(--red); }
+  .progress-val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    width: 42px;
+    text-align: right;
+  }
+
+  /* ── MAIN ── */
+  .main { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* ── SECTION ── */
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .section-title::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 1px;
+    background: var(--green);
+  }
+  .section-actions { display: flex; gap: 6px; }
+
+  /* ── TABLE ── */
+  .proc-table { width: 100%; border-collapse: collapse; }
+  .proc-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .proc-table th:first-child { padding-left: 0; }
+  .proc-table td {
+    padding: 6px 8px;
+    vertical-align: middle;
+    border-bottom: 1px solid rgba(48,54,61,0.5);
+  }
+  .proc-table td:first-child { padding-left: 0; }
+  .proc-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Status */
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+  .dot.running { background: var(--green); animation: pulse-g 2s infinite; }
+  .dot.stopped { background: var(--red); }
+  .dot.warning { background: var(--orange); animation: pulse-o 1.5s infinite; }
+  .dot.unknown { background: var(--text-dim); }
+  @keyframes pulse-g {
+    0%,100% { box-shadow: 0 0 0 0 rgba(0,255,136,.5); }
+    50%      { box-shadow: 0 0 0 4px rgba(0,255,136,0); }
+  }
+  @keyframes pulse-o {
+    0%,100% { box-shadow: 0 0 0 0 rgba(255,153,0,.5); }
+    50%      { box-shadow: 0 0 0 4px rgba(255,153,0,0); }
+  }
+
+  /* Process name */
+  .proc-name { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 500; }
+  .proc-cmd {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 260px;
+  }
+  .pid-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--bg3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .uptime-val { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+  /* Mini bar */
+  .mini-bar-wrap { display: flex; align-items: center; gap: 5px; min-width: 80px; }
+  .mini-bar { width: 50px; height: 5px; background: var(--bg3); border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+  .mini-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+  .mini-fill.green  { background: var(--green); }
+  .mini-fill.orange { background: var(--orange); }
+  .mini-fill.red    { background: var(--red); }
+  .mini-val { font-family: var(--mono); font-size: 11px; color: var(--text-dim); width: 36px; text-align: right; }
+
+  /* Action buttons */
+  .act-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .act-btn:hover            { color: var(--text);   border-color: var(--text-dim); }
+  .act-btn.start:hover      { color: var(--green);  border-color: var(--green); }
+  .act-btn.stop:hover       { color: var(--red);    border-color: var(--red); }
+  .act-btn.restart:hover    { color: var(--orange); border-color: var(--orange); }
+  .act-btn:disabled         { opacity: 0.3; cursor: not-allowed; }
+  .actions-cell             { display: flex; gap: 4px; }
+
+  /* ── LOG PANEL ── */
+  .log-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .log-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .log-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .log-title select {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+  .log-body {
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.6;
+    padding: 8px 10px;
+    max-height: 220px;
+    overflow-y: auto;
+    color: var(--text-dim);
+  }
+  .log-line { display: flex; gap: 8px; min-height: 18px; }
+  .log-ts   { color: var(--text-dim); opacity: 0.6; flex-shrink: 0; white-space: nowrap; font-size: 10px; }
+  .log-msg  { word-break: break-all; }
+  .log-msg.ok   { color: var(--green); }
+  .log-msg.err  { color: var(--red); }
+  .log-msg.warn { color: var(--orange); }
+  .log-msg.info { color: var(--blue); }
+  .log-empty    { color: var(--text-dim); font-style: italic; }
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: var(--bg2); }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── ERROR BANNER ── */
+  .error-banner {
+    display: none;
+    background: rgba(255,68,68,0.08);
+    border: 1px solid rgba(255,68,68,0.3);
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: var(--red);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .error-banner.show { display: block; }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    min-width: 300px;
+    max-width: 400px;
+    width: 90%;
+  }
+  .modal-title { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .modal-msg   { color: var(--text-dim); font-size: 12px; line-height: 1.6; margin-bottom: 16px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .modal-btn:hover { border-color: var(--text-dim); }
+  .modal-btn.confirm { background: rgba(255,68,68,0.1); border-color: var(--red); color: var(--red); }
+  .modal-btn.confirm:hover { background: var(--red); color: #fff; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 16px; right: 16px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    z-index: 300;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    max-width: 320px;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.ok   { border-color: var(--green); color: var(--green); }
+  #toast.err  { border-color: var(--red);   color: var(--red); }
+  #toast.warn { border-color: var(--orange); color: var(--orange); }
+
+  /* ── FOOTER ── */
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 8px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 640px) {
+    .header-stats { display: none; }
+    .proc-cmd { max-width: 140px; }
+    .sysbar-item { min-width: 140px; }
+    th.col-pid, td.col-pid,
+    th.col-mem, td.col-mem { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">MJRDM<span>/proc</span></div>
+    <div class="platform-badge">TERMUX · ANDROID</div>
+  </div>
+  <div class="header-stats">
+    <div class="hstat">
+      <div class="hstat-val ok" id="stat-running">—</div>
+      <div class="hstat-label">Running</div>
+    </div>
+    <div class="hstat">
+      <div class="hstat-val err" id="stat-stopped">—</div>
+      <div class="hstat-label">Stopped</div>
+    </div>
+    <div class="hstat">
+      <div class="hstat-val" id="stat-uptime">—</div>
+      <div class="hstat-label">Sys uptime</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="auto-badge" id="auto-badge">auto 10s</span>
+    <button class="btn" id="btn-refresh" onclick="refresh()">
+      <span class="spin">↻</span> Refresh
+    </button>
+  </div>
+</div>
+
+<!-- SYSBAR -->
+<div class="sysbar">
+  <div class="sysbar-item">
+    <div class="sysbar-label">CPU</div>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill green" id="cpu-bar" style="width:0%"></div></div>
+      <div class="progress-val" id="cpu-val">—</div>
+    </div>
+  </div>
+  <div class="sysbar-item">
+    <div class="sysbar-label">RAM</div>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill orange" id="ram-bar" style="width:0%"></div></div>
+      <div class="progress-val" id="ram-val">—</div>
+    </div>
+  </div>
+  <div class="sysbar-item">
+    <div class="sysbar-label">Disk</div>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill green" id="disk-bar" style="width:0%"></div></div>
+      <div class="progress-val" id="disk-val">—</div>
+    </div>
+  </div>
+  <div class="sysbar-item">
+    <div class="sysbar-label">Load</div>
+    <div class="progress-wrap">
+      <span id="load-val" style="font-family:var(--mono);font-size:11px;color:var(--text)">— — —</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- Error banner -->
+  <div class="error-banner" id="error-banner"></div>
+
+  <!-- CORE SERVICES -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Core Services</div>
+      <div class="section-actions">
+        <button class="act-btn restart" onclick="confirmAction('restart_all','all','Перезапустить все сервисы Majordomo?\n(cycle.php + watchdog)')">↺ Restart All</button>
+      </div>
+    </div>
+    <table class="proc-table">
+      <thead>
+        <tr>
+          <th style="width:14px"></th>
+          <th>Process</th>
+          <th class="col-pid">PID</th>
+          <th>CPU</th>
+          <th class="col-mem">MEM</th>
+          <th>Uptime</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="services-tbody">
+        <tr><td colspan="7" style="color:var(--text-dim);font-family:var(--mono);font-size:11px;padding:14px 0">Connecting to API...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- CYCLE SCRIPTS -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">Cycle Scripts</div>
+      <div class="section-actions" id="cycles-count"></div>
+    </div>
+    <table class="proc-table">
+      <thead>
+        <tr>
+          <th style="width:14px"></th>
+          <th>Script</th>
+          <th class="col-pid">PID</th>
+          <th>CPU</th>
+          <th class="col-mem">MEM</th>
+          <th>Uptime</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cycles-tbody">
+        <tr><td colspan="7" style="color:var(--text-dim);font-family:var(--mono);font-size:11px;padding:14px 0">Connecting to API...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- LOG TAIL -->
+  <div class="log-panel">
+    <div class="log-head">
+      <div class="log-title">
+        ▸ Log:
+        <select id="log-select" onchange="loadLog(this.value)">
+          <option value="cycle">cycle.log</option>
+          <option value="watchdog">watchdog</option>
+          <option value="boot">boot</option>
+          <option value="lighttpd">lighttpd error</option>
+          <option value="threads">threads</option>
+          <option value="backup">backup</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <span id="log-ts" style="font-family:var(--mono);font-size:10px;color:var(--text-dim)"></span>
+        <button class="act-btn" onclick="document.getElementById('log-body').innerHTML='<div class=\'log-line\'><span class=\'log-msg log-empty\'>Cleared (view only)</span></div>'">✕</button>
+      </div>
+    </div>
+    <div class="log-body" id="log-body">
+      <div class="log-line"><span class="log-msg log-empty">Select a log above to view</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <span>Majordomo · Termux · PHP 8 · lighttpd :8080 · MariaDB · Redis</span>
+  <span id="footer-refresh">Never refreshed</span>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Confirm</div>
+    <div class="modal-msg"   id="modal-msg">Are you sure?</div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn confirm" onclick="executeAction()">Execute</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  CONFIG
+//  API_BASE — путь к process_api.php относительно текущей страницы.
+//  Если HTML открывается напрямую через file://, замените на абсолютный URL.
+// ─────────────────────────────────────────────────────────────────────────────
+const API_BASE      = './process_api.php';
+const AUTO_INTERVAL = 10000; // ms
+
+// Опциональный токен (если сервер за пределами localhost).
+// Установите значение или оставьте пустым для localhost-only доступа.
+const API_TOKEN = '123';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────────────────────────────────────
+let pendingAction = null;
+let pendingTarget = null;
+let autoTimer     = null;
+let autoCountdown = AUTO_INTERVAL / 1000;
+let currentLog    = 'cycle';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  API
+// ─────────────────────────────────────────────────────────────────────────────
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (API_TOKEN) h['X-Proc-Token'] = API_TOKEN;
+  return h;
+}
+
+async function apiGet(params = {}) {
+  const qs = new URLSearchParams(params).toString();
+  const url = API_BASE + (qs ? '?' + qs : '');
+  const res = await fetch(url, { headers: apiHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function apiPost(body = {}) {
+  const res = await fetch(API_BASE, {
+    method: 'POST',
+    headers: apiHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  REFRESH — основной цикл получения данных
+// ─────────────────────────────────────────────────────────────────────────────
+async function refresh() {
+  const btn = document.getElementById('btn-refresh');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  hideBanner();
+
+  try {
+    const data = await apiGet({ action: 'status' });
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    renderStatus(data);
+    document.getElementById('footer-refresh').textContent =
+      'Updated: ' + new Date().toLocaleTimeString('ru-RU');
+
+    // Параллельно обновляем текущий открытый лог
+    loadLog(currentLog, /*silent=*/true);
+
+  } catch (e) {
+    showBanner('API error: ' + e.message
+      + ' — убедитесь, что process_api.php доступен по адресу ' + API_BASE);
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+
+  scheduleAuto();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  AUTO-REFRESH COUNTDOWN
+// ─────────────────────────────────────────────────────────────────────────────
+function scheduleAuto() {
+  clearTimeout(autoTimer);
+  autoCountdown = AUTO_INTERVAL / 1000;
+  const badge = document.getElementById('auto-badge');
+  badge.classList.add('ticking');
+
+  const tick = () => {
+    autoCountdown--;
+    badge.textContent = 'auto ' + autoCountdown + 's';
+    if (autoCountdown <= 0) {
+      refresh();
+    } else {
+      autoTimer = setTimeout(tick, 1000);
+    }
+  };
+  autoTimer = setTimeout(tick, 1000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────────────────────────────────────
+function renderStatus(data) {
+  const { cores, cycles, sys } = data;
+  const all = [...(cores || []), ...(cycles || [])];
+
+  const running = all.filter(p => p.status === 'running').length;
+  const stopped = all.filter(p => p.status === 'stopped').length;
+
+  setEl('stat-running', running);
+  setEl('stat-stopped', stopped);
+  setEl('stat-uptime',  fmtUptime(sys.uptimeSec));
+
+  const el = document.getElementById('stat-stopped');
+  el.className = 'hstat-val ' + (stopped > 0 ? 'err' : 'ok');
+
+  // Sysbar
+  const ramPct  = sys.ramTotal > 0 ? Math.round(sys.ramUsed  / sys.ramTotal  * 100) : 0;
+  const diskPct = sys.diskTotal> 0 ? Math.round(sys.diskUsed / sys.diskTotal * 100) : 0;
+
+  setBar('cpu',  sys.cpu,  sys.cpu + '%');
+  setBar('ram',  ramPct,   fmtMem(sys.ramUsed));
+  setBar('disk', diskPct,  fmtDisk(sys.diskUsed));
+  setEl('load-val', (sys.load || ['—','—','—']).join(' · '));
+
+  // Tables
+  document.getElementById('services-tbody').innerHTML =
+    (cores || []).map(renderRow).join('') || emptyRow('No core services found');
+
+  const cycleHtml = (cycles || []).map(renderRow).join('');
+  document.getElementById('cycles-tbody').innerHTML =
+    cycleHtml || emptyRow('No cycle scripts found (check scripts/cycle_*.php)');
+
+  // Cycle count badge
+  const running_cycles = (cycles || []).filter(p => p.status === 'running').length;
+  document.getElementById('cycles-count').innerHTML =
+    `<span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">`
+    + running_cycles + '/' + (cycles || []).length + ' running</span>';
+}
+
+function renderRow(p) {
+  const stat    = p.status || 'unknown';
+  const cpuPct  = parseFloat(p.cpu) || 0;
+  const memPct  = parseFloat(p.memPct) || 0;
+  const esc     = (s) => String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  // Cycle scripts (type='cycle') — нет кнопки Start (запускает cycle.php)
+  let actions = '';
+  if (p.status === 'running') {
+    actions = `<button class="act-btn stop"    onclick="confirmAction('stop','${esc(p.id)}','Остановить ${esc(p.name)}?')">■ Stop</button>`
+            + `<button class="act-btn restart" onclick="confirmAction('restart','${esc(p.id)}','Перезапустить ${esc(p.name)}?')">↺ Restart</button>`;
+  } else if (p.canStart) {
+    actions = `<button class="act-btn start" onclick="confirmAction('start','${esc(p.id)}','Запустить ${esc(p.name)}?')">▶ Start</button>`;
+  } else {
+    // Cycle script — только cycle.php может его запустить
+    actions = `<span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">via cycle.php</span>`;
+  }
+
+  return `<tr data-id="${esc(p.id)}">
+    <td><div class="dot ${stat}"></div></td>
+    <td>
+      <div class="proc-name">${esc(p.name)}</div>
+      <div class="proc-cmd" title="${esc(p.cmd)}">${esc(p.cmd)}</div>
+    </td>
+    <td class="col-pid"><span class="pid-badge">${p.pid || '—'}</span></td>
+    <td>
+      <div class="mini-bar-wrap">
+        <div class="mini-bar"><div class="mini-fill ${barClass(cpuPct)}" style="width:${Math.min(cpuPct*12,100)}%"></div></div>
+        <div class="mini-val">${p.cpu}%</div>
+      </div>
+    </td>
+    <td class="col-mem">
+      <div class="mini-bar-wrap">
+        <div class="mini-bar"><div class="mini-fill ${barClass(memPct)}" style="width:${Math.min(memPct*4,100)}%"></div></div>
+        <div class="mini-val">${fmtMem(p.mem)}</div>
+      </div>
+    </td>
+    <td><span class="uptime-val">${fmtUptime(p.uptime)}</span></td>
+    <td><div class="actions-cell">${actions}</div></td>
+  </tr>`;
+}
+
+function emptyRow(msg) {
+  return `<tr><td colspan="7" style="color:var(--text-dim);font-family:var(--mono);font-size:11px;padding:12px 0;">${msg}</td></tr>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  LOG
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadLog(type, silent = false) {
+  currentLog = type;
+
+  if (!silent) {
+    document.getElementById('log-body').innerHTML =
+      '<div class="log-line"><span class="log-msg log-empty">Loading...</span></div>';
+  }
+
+  try {
+    const data = await apiGet({ action: 'log', type, lines: 80 });
+    if (data.error) throw new Error(data.error);
+
+    const lines = Array.isArray(data) ? data : (data.lines || []);
+    renderLog(lines);
+
+    document.getElementById('log-ts').textContent =
+      lines.length + ' lines · ' + new Date().toLocaleTimeString('ru-RU');
+
+  } catch (e) {
+    if (!silent) {
+      document.getElementById('log-body').innerHTML =
+        `<div class="log-line"><span class="log-msg err">Error: ${escHtml(e.message)}</span></div>`;
+    }
+  }
+}
+
+function renderLog(lines) {
+  const el = document.getElementById('log-body');
+  if (!lines || lines.length === 0) {
+    el.innerHTML = '<div class="log-line"><span class="log-msg log-empty">No entries</span></div>';
+    return;
+  }
+  el.innerHTML = lines.map(l =>
+    `<div class="log-line">`
+    + `<span class="log-ts">${escHtml(l.ts || '')}</span>`
+    + `<span class="log-msg ${escHtml(l.level || 'info')}">${escHtml(l.msg || '')}</span>`
+    + `</div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+function confirmAction(action, target, msg) {
+  pendingAction = action;
+  pendingTarget = target;
+  const titles = {
+    stop: '■ Stop process',
+    start: '▶ Start process',
+    restart: '↺ Restart process',
+    restart_all: '↺ Restart all services',
+  };
+  document.getElementById('modal-title').textContent = titles[action] || 'Confirm';
+  document.getElementById('modal-msg').textContent   = msg;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  pendingAction = null;
+  pendingTarget = null;
+}
+
+async function executeAction() {
+  const action = pendingAction;
+  const target = pendingTarget;
+  closeModal();
+  if (!action) return;
+
+  showToast('Executing ' + action + (target !== 'all' ? ' → ' + target : '') + '...', 'warn');
+
+  try {
+    const result = await apiPost({ action, target });
+    if (result.error) throw new Error(result.error);
+
+    const ok = result.ok !== false;
+    showToast(result.msg || (ok ? 'Done' : 'Failed'), ok ? 'ok' : 'err');
+
+  } catch (e) {
+    showToast('Error: ' + e.message, 'err');
+  }
+
+  // Обновляем статус через 1.5 сек (даём процессам время запуститься)
+  setTimeout(refresh, 1500);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+function fmtUptime(sec) {
+  if (!sec) return '—';
+  sec = parseInt(sec);
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm ' + (sec % 60) + 's';
+}
+
+function fmtMem(mb) {
+  if (!mb) return '—';
+  mb = parseInt(mb);
+  if (mb >= 1024) return (mb / 1024).toFixed(1) + 'G';
+  return mb + 'M';
+}
+
+function fmtDisk(mb) {
+  if (!mb) return '—';
+  mb = parseInt(mb);
+  if (mb >= 1024) return (mb / 1024).toFixed(1) + 'G';
+  return mb + 'M';
+}
+
+function barClass(pct) {
+  if (pct >= 85) return 'red';
+  if (pct >= 60) return 'orange';
+  return 'green';
+}
+
+function setBar(id, pct, label) {
+  const bar = document.getElementById(id + '-bar');
+  bar.style.width = Math.min(parseInt(pct) || 0, 100) + '%';
+  bar.className = 'progress-fill ' + barClass(parseInt(pct) || 0);
+  document.getElementById(id + '-val').textContent = label;
+}
+
+function setEl(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TOAST + BANNER
+// ─────────────────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + (type || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3000);
+}
+
+function showBanner(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function hideBanner() {
+  document.getElementById('error-banner').classList.remove('show');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  KEYBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const tag = document.activeElement.tagName;
+    if (tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') {
+      clearTimeout(autoTimer);
+      refresh();
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────────────────────────────────────
+refresh();
+loadLog('cycle');
+</script>
+</body>
+</html>
