@@ -182,7 +182,7 @@ curl -s http://127.0.0.1:8080/ | head -3
 
 IP устройства:
 ```bash
-python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()"
+ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 ```
 `ip route get` и `ifconfig` на части прошивок Android без root возвращают `Permission denied` или некорректный адрес (например, адрес шлюза вместо адреса устройства) — команда выше надёжнее, так как не требует специальных прав.
 
@@ -290,11 +290,6 @@ pkill lighttpd; sleep 1
 lighttpd -f $PREFIX/etc/lighttpd/lighttpd.conf
 ```
 
-### Циклы зависают после обновления
-```bash
-mkdir -p ~/htdocs/backup/$(date +%Y%m%d)
-grep "SETTINGS_BACKUP_PATH" ~/htdocs/config.php
-```
 ### phpMyAdmin: No such file or directory
 ```bash
 cat > $PREFIX/share/phpmyadmin/config.inc.php << 'EOF'
