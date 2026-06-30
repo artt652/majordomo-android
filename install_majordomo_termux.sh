@@ -119,11 +119,26 @@ echo "MySQL strict mode отключён"
 # =============================================================
 # ШАГ 6: Клонирование Majordomo
 # =============================================================
+
 echo ""
 echo ">>> ШАГ 6: Клонирование Majordomo..."
 
 if [ -d "$HTDOCS" ]; then
-    echo "Папка $HTDOCS уже существует — пропускаем"
+    echo "Папка $HTDOCS уже существует."
+    echo -n "Перезаписать (удалить и клонировать заново)? [y/N] > "
+    read -r REPLY_OVERWRITE
+    case "$REPLY_OVERWRITE" in
+        [yY]|[yY][eE][sS])
+            echo "Удаление существующей папки $HTDOCS..."
+            rm -rf "$HTDOCS"
+            cd "$HOME_DIR"
+            git clone https://github.com/sergejey/majordomo.git htdocs
+            echo "Majordomo клонирован заново"
+            ;;
+        *)
+            echo "Папка оставлена без изменений — пропускаем клонирование"
+            ;;
+    esac
 else
     cd "$HOME_DIR"
     git clone https://github.com/sergejey/majordomo.git htdocs
