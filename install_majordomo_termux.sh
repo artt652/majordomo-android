@@ -254,7 +254,7 @@ if (file_exists(DOC_ROOT . '/vendor/autoload.php')) {
 if (!extension_loaded('redis') && file_exists(DOC_ROOT . '/lib/redis_compat.php')) {
     require_once DOC_ROOT . '/lib/redis_compat.php';
 }
-if (@fsockopen('127.0.0.1', 6379, $errno, $errstr, 1)) {
+if (@fsockopen('127.0.0.1', 6379, \$errno, \$errstr, 1)) {
     define('USE_REDIS', '127.0.0.1');
 }
 
@@ -430,7 +430,7 @@ nohup php -d opcache.enable=0 "$HTDOCS/cycle.php" \
 CYC_PID=$!
 echo "$CYC_PID" > "$LOGS/cycle.php.lock"
 
-echo "Ожидание запуска cycle.php (CHECK TABLE ~3 мин при первом запуске)..."
+echo "Ожидание запуска cycle.php
 WAITED=0
 while [ $WAITED -lt 180 ]; do
     sleep 5
