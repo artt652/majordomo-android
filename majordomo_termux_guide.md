@@ -41,7 +41,7 @@ Android
 | OPcache | включён | **отключён** (shm_open заблокирован) |
 | DB_HOST | localhost | **127.0.0.1** (TCP вместо unix socket) |
 | mysqldump | /usr/bin/mysqldump | mariadb-dump |
-| Redis клиент | php-redis расширение | **Predis** (чистый PHP) |
+| Redis клиент | php-redis расширение | **Predis** (чистый PHP, только если нет ext-redis) |
 | Redis персистентность | RDB снапшоты включены | **отключены** (`save ""`) |
 | Автозапуск | systemd | Termux:Boot |
 | cycle.php | systemd service | nohup напрямую |
@@ -100,7 +100,7 @@ max_file_uploads = 150
 max_input_time = 180
 ```
 
-Без отключения OPcache — php-cgi падает с `Permission denied`. Без подавления warnings — циклы роняются на PHP 8 предупреждениях. Лимиты загрузки увеличены под рекомендации Majordomo (модули с файлами/бэкапами).
+Без отключения OPcache — php-cgi падает с `Permission denied`. Без подавления warnings — циклы роняются на PHP 8 предупреждениях. Лимиты загрузки увеличены под рекомендации Majordomo (модули с файлами/бэкапами). Установщик генерирует этот файл инлайн через heredoc на каждом запуске; идентичное содержимое хранится в репозитории в `config/opcache_off.ini` как референс/бэкап.
 
 ### Шаг 2.1: Настройка Redis
 
@@ -119,7 +119,7 @@ loglevel warning
 
 ### Шаг 4-5: Пароль MySQL и strict mode
 
-Подключение проверяется перед установкой пароля. Strict mode отключается для совместимости со старыми модулями.
+Подключение проверяется перед установкой пароля. Strict mode отключается для совместимости со старыми модулями; настройки генерируются инлайн через heredoc, идентичное содержимое хранится в репозитории в `config/disable_strict_mode.cnf` как референс/бэкап.
 
 ### Шаг 6: Клонирование и зависимости
 
@@ -158,7 +158,7 @@ if (@fsockopen('127.0.0.1', 6379, $errno, $errstr, 1)) {
 
 ### Шаг 9: lighttpd + phpMyAdmin
 
-`lighttpd.conf` скачивается из репозитория `majordomo-android`, пути подставляются через `sed`. phpMyAdmin настраивается на TCP подключение к MariaDB — без этого ошибка `No such file or directory`.
+`lighttpd.conf` скачивается из репозитория `majordomo-android`, пути подставляются через `sed`. phpMyAdmin настраивается на TCP подключение к MariaDB через инлайн-heredoc (тот же текст хранится в репозитории отдельно в `config/phpmyadmin_config.inc.php` как референс/бэкап — установщик его не скачивает) — без этого ошибка `No such file or directory`.
 
 ### Шаг 10: Автозапуск и watchdog
 
@@ -174,7 +174,7 @@ Boot скрипт `~/.termux/boot/majordomo.sh`:
 7. watchdog.sh
 ```
 
-`watchdog.sh` — единый watchdog (без supervisord, однослойная архитектура): следит за процессом php-cgi и дочерними процессами `[s]cripts/cycle_*` (не за родительским `cycle.php`).
+`watchdog.sh` — единый watchdog: следит за процессом php-cgi и дочерними процессами `[s]cripts/cycle_*` (не за родительским `cycle.php`).
 
 ### Шаг 11: Запуск
 
@@ -203,8 +203,7 @@ IP устройства:
 ```bash
 ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 ```
-`ip route get` и `ifconfig` на части прошивок Android без root возвращают `Permission denied` или некорректный адрес (например, адрес шлюза вместо адреса устройства) — команда выше надёжнее, так как не требует специальных прав.
-
+`ip route get` и `ifconfig` на части прошивок Android без root возвращают `Permission denied`
 ---
 
 ## Совместимость модулей
@@ -233,9 +232,8 @@ ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 
 ---
 
-## Ручной перезапуск
+## Ручной перезапуск через готовые скрипты:
 
-Рекомендуется через готовые скрипты:
 ```bash
 bash ~/htdocs/restart.sh   # полный перезапуск всех сервисов
 bash ~/htdocs/stop.sh      # остановить всё
@@ -246,7 +244,7 @@ bash ~/htdocs/start.sh     # запустить всё
 
 ## Обновление Majordomo
 
-Обновление через штатные средства — модуль **saverestore** или **Маркет дополнений** в веб-интерфейсе. Файлы ядра не модифицированы
+Обновление через штатные средства — модуль **saverestore** или **Маркет дополнений** в веб-интерфейсе. Файлы ядра не модифицированы.
 
 ---
 
@@ -338,7 +336,7 @@ redis-server $PREFIX/etc/redis.conf > /dev/null 2>&1 &
 
 | Файл | Назначение |
 |---|---|
-| `~/htdocs/lib/redis_compat.php` | Враппер Redis через Predis (условный, см. config.php) |
+| `~/htdocs/lib/redis_compat.php` | Враппер Redis через Predis |
 | `~/htdocs/watchdog.sh` | Watchdog для php-cgi и дочерних cycle_* |
 | `~/htdocs/restart.sh` | Скрипт полного перезапуска всех сервисов |
 | `~/htdocs/start.sh` | Скрипт запуска всех сервисов |
@@ -352,7 +350,7 @@ redis-server $PREFIX/etc/redis.conf > /dev/null 2>&1 &
 | `~/htdocs/tools/process_manager.html` | Менеджер процессов |
 | `~/.termux/boot/majordomo.sh` | Автозапуск (Termux:Boot) |
 | `$PREFIX/etc/php/conf.d/opcache_off.ini` | Настройки PHP (генерируется инлайн) |
-| `$PREFIX/etc/redis.conf` | Конфиг Redis без RDB-снапшотов (скачивается из репозитория или генерируется инлайн) |
+| `$PREFIX/etc/redis.conf` | Конфиг Redis без RDB-снапшотов (скачивается из репозитория) |
 | `$PREFIX/etc/lighttpd/lighttpd.conf` | Конфиг веб-сервера (скачивается из репозитория) |
 | `$PREFIX/etc/mysql/conf.d/disable_strict_mode.cnf` | Отключение strict mode (генерируется инлайн) |
 | `$PREFIX/share/phpmyadmin/config.inc.php` | Конфиг phpMyAdmin (генерируется инлайн) |
