@@ -134,7 +134,7 @@ function getProcessDefs(): array
             'name'         => 'lighttpd',
             'cmd_display'  => 'lighttpd -f .../lighttpd.conf',
             // Из debug: cmd = "lighttpd .../bin/lighttpd -f .../lighttpd.conf"
-            'grep_pattern' => 'bin/lighttpd',
+            'grep_pattern' => 'lighttpd -f',
             'start_cmd'    => "lighttpd -f {$prefix}/etc/lighttpd/lighttpd.conf",
             'stop_signal'  => 'TERM',
             'type'         => 'core',
