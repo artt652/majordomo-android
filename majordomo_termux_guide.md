@@ -41,9 +41,8 @@ Android
 | OPcache | включён | **отключён** (shm_open заблокирован) |
 | DB_HOST | localhost | **127.0.0.1** (TCP вместо unix socket) |
 | mysqldump | /usr/bin/mysqldump | mariadb-dump |
-| Redis клиент | php-redis расширение | **Predis** (чистый PHP, только если нет ext-redis) |
+| Redis клиент | php-redis расширение | **Predis** (чистый PHP) |
 | Redis персистентность | RDB снапшоты включены | **отключены** (`save ""`) |
-| Перезапуск MySQL из веб-панели | через sudo | пока не используется (`DISABLE_MYSQL_RESTART` закомментирован — не реализовано в upstream) |
 | Автозапуск | systemd | Termux:Boot |
 | cycle.php | systemd service | nohup напрямую |
 
@@ -241,19 +240,6 @@ ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 bash ~/htdocs/restart.sh   # полный перезапуск всех сервисов
 bash ~/htdocs/stop.sh      # остановить всё
 bash ~/htdocs/start.sh     # запустить всё
-```
-
-Вручную (если скрипты недоступны):
-```bash
-pkill lighttpd 2>/dev/null
-pkill php-cgi 2>/dev/null
-pkill -f watchdog 2>/dev/null
-pkill -f "cycle.php" 2>/dev/null
-pkill -f "scripts/cycle" 2>/dev/null
-pkill redis-server 2>/dev/null
-pkill -f mariadbd 2>/dev/null
-sleep 3
-bash ~/.termux/boot/majordomo.sh
 ```
 
 ---
