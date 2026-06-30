@@ -4,13 +4,13 @@
 
 Majordomo — PHP-система домашней автоматизации. Эта инструкция описывает установку на Android-устройство через Termux без root-прав. Старый телефон или планшет превращается в полноценный сервер умного дома, работающий 24/7.
 
-**Протестировано:** Termux 0.119+, PHP 8.5, MariaDB 12.3, Redis 8.8
+**Протестировано:** Termux 0.119+, Android 7+, PHP 8.5, MariaDB 12, Redis
 
 ---
 
 ## Требования
 
-- Android (тестировалось на Android 8+)
+- Android 7+
 - **Termux** — с [официального сайта](https://termux.dev) или [GitHub](https://github.com/termux/termux-app/releases) (не из Google Play)
 - **Termux:Boot** из [F-Droid](https://f-droid.org/packages/com.termux.boot/) — для автозапуска
 
@@ -22,11 +22,11 @@ Majordomo — PHP-система домашней автоматизации. Э
 Android
 └── Termux
     ├── MariaDB         (база данных, TCP 127.0.0.1:3306)
-    ├── Redis           (кэш состояний устройств)
-    ├── php-cgi         (FastCGI через unix socket)
+    ├── Redis           (кэш состояний устройств, TCP 127.0.0.1:6379)
+    ├── php-cgi         (FastCGI через TCP 127.0.0.1:9000)
     ├── lighttpd        (веб-сервер, порт 8080)
     ├── cycle.php       (основной демон Majordomo)
-    └── watchdog.sh     (следит за php-cgi и cycle.php)
+    └── watchdog.sh     (следит за php-cgi и дочерними cycle_*)
 ```
 
 ---
@@ -37,10 +37,12 @@ Android
 |---|---|---|
 | Веб-сервер | Apache + mod_php | lighttpd + php-cgi |
 | PHP FastCGI | php-fpm | php-cgi (fpm не работает) |
+| php-cgi транспорт | unix socket | **TCP 127.0.0.1:9000** |
 | OPcache | включён | **отключён** (shm_open заблокирован) |
 | DB_HOST | localhost | **127.0.0.1** (TCP вместо unix socket) |
 | mysqldump | /usr/bin/mysqldump | mariadb-dump |
-| Redis клиент | php-redis расширение | **Predis** (чистый PHP) |
+| Redis клиент | php-redis расширение | **Predis** (чистый PHP, только если нет ext-redis) |
+| Перезапуск MySQL из веб-панели | через sudo | **отключён** (`DISABLE_MYSQL_RESTART`) |
 | Автозапуск | systemd | Termux:Boot |
 | cycle.php | systemd service | nohup напрямую |
 
@@ -48,11 +50,17 @@ Android
 
 ## Почему php-fpm не работает на Android
 
-PHP-FPM и php-cgi при старте пытаются создать lock через `shm_open()`. Android без root запрещает этот системный вызов → ошибка `Permission denied (13)`. Решение — запускать `php-cgi` вручную через unix socket с отключённым OPcache до старта lighttpd.
+PHP-FPM и php-cgi при старте пытаются создать lock через `shm_open()`. Android без root запрещает этот системный вызов → ошибка `Permission denied (13)`. Решение — запускать `php-cgi` вручную с отключённым OPcache до старта lighttpd.
+
+## Почему php-cgi работает через TCP, а не unix socket
+
+Изначально php-cgi запускался через unix socket (`-b $PREFIX/var/run/php-cgi.sock`). На практике это оказалось нестабильно: SELinux на Android блокирует системный вызов `accept()` в дочерних процессах php-cgi при работе через unix socket. Решение — TCP `127.0.0.1:9000` с `PHP_FCGI_CHILDREN=4` и `PHP_FCGI_MAX_REQUESTS=500`. php-cgi обязательно должен быть поднят **до** lighttpd.
 
 ## Почему php-redis не работает
 
-`php-redis` в Termux скомпилирован под другую версию PHP API и несовместим. Используется **Predis** — чистый PHP клиент. Враппер `lib/redis_compat.php` эмулирует класс `Redis` через Predis прозрачно для Majordomo.
+`php-redis` в Termux скомпилирован под другую версию PHP API и несовместим. Используется **Predis** — чистый PHP клиент. Враппер `lib/redis_compat.php` эмулирует класс `Redis` через Predis прозрачно для Majordomo, но подключается только если:
+1. расширение `redis` не загружено (`!extension_loaded('redis')`), и
+2. Redis реально слушает порт 6379 на момент старта (`fsockopen`-проверка) — иначе `USE_REDIS` вообще не определяется, и Majordomo работает без Redis-кэша.
 
 ---
 
@@ -63,7 +71,7 @@ PHP-FPM и php-cgi при старте пытаются создать lock че
 ### Шаг 0: Подготовка
 
 ```bash
-pkg install wget
+pkg install wget -y
 wget -O ~/install_majordomo.sh https://raw.githubusercontent.com/artt652/majordomo-android/main/install_majordomo_termux.sh
 chmod +x ~/install_majordomo.sh
 bash ~/install_majordomo.sh
@@ -72,7 +80,7 @@ bash ~/install_majordomo.sh
 ### Шаг 1: Установка пакетов
 
 ```bash
-pkg install git mariadb php php-fpm lighttpd redis phpmyadmin wget composer
+pkg install git mariadb php php-fpm php-gd lighttpd redis phpmyadmin wget composer
 ```
 
 ### Шаг 2: Отключение OPcache и настройка PHP
@@ -80,11 +88,15 @@ pkg install git mariadb php php-fpm lighttpd redis phpmyadmin wget composer
 ```ini
 opcache.enable=0
 opcache.enable_cli=0
-error_reporting = E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED & ~E_STRICT
+error_reporting = E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED
 display_errors = Off
+post_max_size = 200M
+upload_max_filesize = 50M
+max_file_uploads = 150
+max_input_time = 180
 ```
 
-Без отключения OPcache — php-cgi падает с `Permission denied`. Без подавления warnings — циклы роняются на PHP 8 предупреждениях (например `rmdir()` на непустую папку).
+Без отключения OPcache — php-cgi падает с `Permission denied`. Без подавления warnings — циклы роняются на PHP 8 предупреждениях. Лимиты загрузки увеличены под рекомендации Majordomo (модули с файлами/бэкапами).
 
 ### Шаг 3: Запуск MariaDB
 
@@ -101,20 +113,27 @@ git clone https://github.com/sergejey/majordomo.git ~/htdocs
 composer require predis/predis
 ```
 
-Автоматически создаются: `lib/redis_compat.php`, `tinyfilemanager.php`, `redis_api.php`, `redis_monitor.html`.
+Если папка `~/htdocs` уже существует, скрипт спрашивает подтверждение на перезапись (удаление и повторное клонирование) — старая установка по умолчанию не трогается.
+
+Автоматически скачиваются: `lib/redis_compat.php`, `watchdog.sh`, `restart.sh`, и в подпапку `tools/`: `tinyfilemanager.php` (из апстрима prasathmani/tinyfilemanager), `redis_api.php`, `redis_monitor.html`.
 
 ### Шаг 7: config.php
 
 ```php
 Define('DB_HOST', '127.0.0.1');          // TCP, не localhost!
 Define('PATH_TO_MYSQLDUMP', 'mariadb-dump');
+Define('PATH_TO_MYSQL', 'mariadb');
 Define('BASE_URL', 'http://127.0.0.1:8080');
 Define('ENABLE_PANEL_ACCELERATION', 1);
-Define('SETTINGS_BACKUP_PATH', '.../htdocs/backup/');
-define('USE_REDIS', '127.0.0.1');
-```
+//define('DISABLE_MYSQL_RESTART', true);    // Пока ещё не реализовано в upstream
 
-`SETTINGS_BACKUP_PATH` — критически важно. Без неё `startup_maintenance.php` делает `CHECK TABLE` всех таблиц при **каждом** запуске cycle_main (~3 минуты).
+if (!extension_loaded('redis') && file_exists(DOC_ROOT . '/lib/redis_compat.php')) {
+    require_once DOC_ROOT . '/lib/redis_compat.php';
+}
+if (@fsockopen('127.0.0.1', 6379, $errno, $errstr, 1)) {
+    define('USE_REDIS', '127.0.0.1');
+}
+```
 
 ### Шаг 8: Импорт БД
 
@@ -122,7 +141,7 @@ define('USE_REDIS', '127.0.0.1');
 
 ### Шаг 9: lighttpd + phpMyAdmin
 
-phpMyAdmin настраивается на TCP подключение к MariaDB — без этого ошибка `No such file or directory`.
+`lighttpd.conf` скачивается из репозитория `majordomo-android`, пути подставляются через `sed`. phpMyAdmin настраивается на TCP подключение к MariaDB — без этого ошибка `No such file or directory`.
 
 ### Шаг 10: Автозапуск и watchdog
 
@@ -132,16 +151,13 @@ Boot скрипт `~/.termux/boot/majordomo.sh`:
 1. Остановка старых процессов  (защита от двойного запуска)
 2. MariaDB     (sleep 8)
 3. Redis       (sleep 1)
-4. php-cgi     (sleep 3, ОБЯЗАТЕЛЬНО до lighttpd!)
+4. php-cgi     (TCP 127.0.0.1:9000, sleep 3, ОБЯЗАТЕЛЬНО до lighttpd!)
 5. lighttpd
 6. cycle.php
 7. watchdog.sh
 ```
 
-`watchdog.sh` — единый watchdog для php-cgi и cycle.php:
-- Проверяет каждые **30 секунд**
-- После перезапуска cycle.php ждёт **60 секунд** (время на CHECK TABLE)
-- Создаёт папку бэкапа на текущий день
+`watchdog.sh` — единый watchdog (без supervisord, однослойная архитектура): следит за процессом php-cgi и дочерними процессами `[s]cripts/cycle_*` (не за родительским `cycle.php`).
 
 ### Шаг 11: Запуск
 
@@ -160,14 +176,15 @@ curl -s http://127.0.0.1:8080/ | head -3
 
 - **Majordomo:** `http://IP:8080`
 - **phpMyAdmin:** `http://IP:8080/phpmyadmin/` (root / пароль из установки)
-- **TinyFileManager:** `http://IP:8080/tinyfilemanager.php` (admin / admin@123 — сменить пароль!)
-- **Redis монитор:** `http://IP:8080/redis_monitor.html`
+- **TinyFileManager:** `http://IP:8080/tools/tinyfilemanager.php` (admin / admin@123 — сменить пароль по умолчанию после первого входа!)
+- **Redis монитор:** `http://IP:8080/tools/redis_monitor.html`
 - **WebSocket:** порт `8001` (прямое подключение браузера)
 
 IP устройства:
 ```bash
-ifconfig | grep "inet " | grep -v "127.0.0.1"
+python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()"
 ```
+`ip route get` и `ifconfig` на части прошивок Android без root возвращают `Permission denied` или некорректный адрес (например, адрес шлюза вместо адреса устройства) — команда выше надёжнее, так как не требует специальных прав.
 
 ---
 
@@ -176,6 +193,7 @@ ifconfig | grep "inet " | grep -v "127.0.0.1"
 **Протестированы и работают:**
 
 - Все стандартные модули Majordomo
+- **YaDevices**
 - **Каналы RSS**
 - **File Manager** — в настройках указать корневую папку:
   ```
@@ -198,6 +216,12 @@ ifconfig | grep "inet " | grep -v "127.0.0.1"
 
 ## Ручной перезапуск
 
+Рекомендуется через готовый скрипт:
+```bash
+bash ~/htdocs/restart.sh
+```
+
+Вручную (если `restart.sh` недоступен):
 ```bash
 pkill lighttpd 2>/dev/null
 pkill php-cgi 2>/dev/null
@@ -214,7 +238,7 @@ bash ~/.termux/boot/majordomo.sh
 
 ## Обновление Majordomo
 
-Обновление через штатные средства — модуль **saverestore** или **Маркет дополнений** в веб-интерфейсе. Файлы ядра не модифицированы.
+Обновление через штатные средства — модуль **saverestore** или **Маркет дополнений** в веб-интерфейсе. Файлы ядра не модифицированы (Android-специфичные правки живут отдельно от апстрима, см. раздел ниже).
 
 После обновления:
 ```bash
@@ -250,12 +274,14 @@ echo -e "opcache.enable=0\nopcache.enable_cli=0" \
 grep "DB_HOST" ~/htdocs/config.php  # должно быть 127.0.0.1
 ```
 
-### lighttpd 503
+### lighttpd 503 / нет ответа от php-cgi
 ```bash
+pkill php-cgi
+PHP_FCGI_CHILDREN=4 PHP_FCGI_MAX_REQUESTS=500 \
 PHP_INI_SCAN_DIR=$PREFIX/etc/php/conf.d \
-    php-cgi -b $PREFIX/var/run/php-cgi.sock > /dev/null 2>&1 &
-sleep 2; pkill lighttpd
-lighttpd -f $PREFIX/etc/lighttpd/lighttpd.conf
+    php-cgi -b 127.0.0.1:9000 > /dev/null 2>&1 &
+sleep 2
+php -r "var_dump(@fsockopen('127.0.0.1', 9000, \$e, \$s, 2));"  # должно быть resource, не false
 ```
 
 ### lighttpd bind() ошибка 98 (порт занят)
@@ -269,7 +295,6 @@ lighttpd -f $PREFIX/etc/lighttpd/lighttpd.conf
 mkdir -p ~/htdocs/backup/$(date +%Y%m%d)
 grep "SETTINGS_BACKUP_PATH" ~/htdocs/config.php
 ```
-
 ### phpMyAdmin: No such file or directory
 ```bash
 cat > $PREFIX/share/phpmyadmin/config.inc.php << 'EOF'
@@ -281,8 +306,17 @@ $cfg['Servers'][$i]['host']         = '127.0.0.1';
 $cfg['Servers'][$i]['port']         = 3306;
 $cfg['Servers'][$i]['connect_type'] = 'tcp';
 $cfg['Servers'][$i]['AllowNoPassword'] = false;
+$cfg['TempDir'] = '/data/data/com.termux/files/home/htdocs/cycle_cached/pma_tmp';
 EOF
 ```
+
+### Redis не используется, хотя установлен
+```bash
+ps aux | grep "[r]edis-server"                          # запущен ли процесс
+php -r "var_dump(@fsockopen('127.0.0.1', 6379, \$e, \$s, 1));"  # доступен ли порт
+grep "USE_REDIS" ~/htdocs/config.php                     # определена ли константа
+```
+Если процесс не запущен или порт недоступен на момент старта php-cgi/cycle.php — `USE_REDIS` не определится, и Majordomo продолжит работу без Redis (это штатное поведение, не ошибка).
 
 ---
 
@@ -296,16 +330,18 @@ EOF
 
 ---
 
-## Файлы добавленные установщиком
+## Файлы, добавленные установщиком
 
 | Файл | Назначение |
 |---|---|
-| `~/htdocs/lib/redis_compat.php` | Враппер Redis через Predis |
-| `~/htdocs/watchdog.sh` | Watchdog для php-cgi и cycle.php |
-| `~/htdocs/tinyfilemanager.php` | Файловый менеджер |
-| `~/htdocs/redis_api.php` | API для монитора Redis |
-| `~/htdocs/redis_monitor.html` | Дашборд мониторинга Redis |
+| `~/htdocs/lib/redis_compat.php` | Враппер Redis через Predis (условный, см. config.php) |
+| `~/htdocs/watchdog.sh` | Watchdog для php-cgi и дочерних cycle_* |
+| `~/htdocs/restart.sh` | Скрипт ручного перезапуска всех сервисов |
+| `~/htdocs/tools/tinyfilemanager.php` | Файловый менеджер |
+| `~/htdocs/tools/redis_api.php` | API для монитора Redis |
+| `~/htdocs/tools/redis_monitor.html` | Дашборд мониторинга Redis |
 | `~/.termux/boot/majordomo.sh` | Автозапуск (Termux:Boot) |
-| `$PREFIX/etc/php/conf.d/opcache_off.ini` | Настройки PHP |
-| `$PREFIX/etc/lighttpd/lighttpd.conf` | Конфиг веб-сервера |
-| `$PREFIX/share/phpmyadmin/config.inc.php` | Конфиг phpMyAdmin |
+| `$PREFIX/etc/php/conf.d/opcache_off.ini` | Настройки PHP (генерируется инлайн) |
+| `$PREFIX/etc/lighttpd/lighttpd.conf` | Конфиг веб-сервера (скачивается из репозитория) |
+| `$PREFIX/etc/mysql/conf.d/disable_strict_mode.cnf` | Отключение strict mode (генерируется инлайн) |
+| `$PREFIX/share/phpmyadmin/config.inc.php` | Конфиг phpMyAdmin (генерируется инлайн) |
