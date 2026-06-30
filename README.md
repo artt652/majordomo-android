@@ -7,7 +7,7 @@
 ## Быстрая установка
 
 ```bash
-pkg install wget -y
+pkg install wget iproute2 -y
 wget -O ~/install_majordomo.sh \
     https://raw.githubusercontent.com/artt652/majordomo-android/main/install_majordomo_termux.sh
 chmod +x ~/install_majordomo.sh
