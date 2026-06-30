@@ -2,6 +2,8 @@
 
 Набор файлов для запуска [Majordomo](https://github.com/sergejey/majordomo) на Android через Termux без root-прав.
 
+Адаптация официального инсталлятора под платформу с ограничениями Termux (нет root, SELinux блокирует unix-сокеты дочерним процессам, нет systemd) и под PHP 8.5, в то время как код Majordomo рассчитан на PHP 7.
+
 ## Быстрая установка
 
 ```bash
@@ -12,6 +14,8 @@ chmod +x ~/install_majordomo.sh
 bash ~/install_majordomo.sh
 ```
 
+Скрипт ставит пакеты, разворачивает Majordomo, настраивает MariaDB/Redis/lighttpd/php-cgi, создаёт автозапуск через Termux:Boot и поднимает все сервисы.
+
 ## Структура репозитория
 
 ```
@@ -19,46 +23,56 @@ majordomo-android/
 ├── install_majordomo_termux.sh   # Скрипт установки
 ├── htdocs/
 │   ├── lib/
-│   │   └── redis_compat.php      # Враппер Redis через Predis
-│   ├── watchdog.sh               # Watchdog для php-cgi и cycle.php
-│   ├── redis_api.php             # API для монитора Redis
-│   └── redis_monitor.html        # Дашборд мониторинга Redis
+│   │   └── redis_compat.php      # Враппер Redis через Predis (используется только если нет ext-redis)
+│   ├── watchdog.sh                # Watchdog для php-cgi и cycle.php
+│   ├── restart.sh                 # Ручной перезапуск всех сервисов
+│   └── tools/
+│       ├── redis_api.php          # API для монитора Redis
+│       └── redis_monitor.html     # Дашборд мониторинга Redis
 └── config/
-    ├── lighttpd.conf             # Конфиг веб-сервера
-    ├── opcache_off.ini           # Настройки PHP (OPcache + error_reporting)
-    ├── disable_strict_mode.cnf   # MySQL strict mode off
-    └── phpmyadmin_config.inc.php # phpMyAdmin TCP подключение
+    └── lighttpd.conf               # Конфиг веб-сервера (пути подставляются скриптом установки)
 ```
+
+`tinyfilemanager.php` скачивается из апстрима ([prasathmani/tinyfilemanager](https://github.com/prasathmani/tinyfilemanager)) напрямую в `htdocs/tools/` — не хранится в этом репозитории.
+
+OPcache/error_reporting, отключение MySQL strict mode и конфиг phpMyAdmin генерируются скриптом установки на лету (heredoc), отдельными файлами в репозитории не хранятся.
 
 ## Доступ после установки
 
 | Сервис | Адрес |
 |---|---|
-| Majordomo | `http://IP:8080` |
-| phpMyAdmin | `http://IP:8080/phpmyadmin/` |
-| TinyFileManager | `http://IP:8080/tinyfilemanager.php` |
-| Redis монитор | `http://IP:8080/redis_monitor.html` |
+| Majordomo | `http://127.0.0.1:8080` |
+| phpMyAdmin | `http://127.0.0.1:8080/phpmyadmin/` |
+| TinyFileManager | `http://127.0.0.1:8080/tools/tinyfilemanager.php` |
+| Redis монитор | `http://127.0.0.1:8080/tools/redis_monitor.html` |
 | WebSocket | порт `8001` |
 
-IP устройства:
+IP устройства (для доступа с других устройств в той же сети):
 ```bash
-ifconfig | grep "inet " | grep -v "127.0.0.1"
+ip route get 1 | awk '{print $7; exit}'
 ```
 
 ## Требования
 
-- Android 8+
-- [Termux](https://termux.dev) (не из Google Play)
-- [Termux:Boot](https://f-droid.org/packages/com.termux.boot/) для автозапуска
+- Android 7+
+- [Termux](https://termux.dev) (актуальная версия, не из Google Play)
+- [Termux:Boot](https://f-droid.org/packages/com.termux.boot/) для автозапуска после перезагрузки
 
 ## Ключевые особенности
 
-- **php-fpm не работает** на Android (shm_open заблокирован) → используется php-cgi
-- **OPcache отключён** → php-cgi запускается через unix socket вручную до lighttpd
-- **DB_HOST = 127.0.0.1** (не localhost) → TCP вместо unix socket
-- **Predis вместо php-redis** → php-redis несовместим с PHP API Termux
-- **Watchdog** → следит за php-cgi и cycle.php, логи в DebMes Majordomo
+- **php-fpm не работает** на Android (`shm_open` заблокирован) → используется `php-cgi`
+- **php-cgi работает через TCP (`127.0.0.1:9000`), а не unix-сокет** → SELinux на Android блокирует `accept()` в дочерних процессах при unix-сокете, это было подтверждено опытным путём
+- **OPcache отключён** → падает с `Permission denied` из-за shm lock на Android
+- **DB_HOST = 127.0.0.1** (не `localhost`) → форсирует TCP вместо unix-сокета для MariaDB
+- **Predis вместо php-redis** → расширение `redis` несовместимо с PHP API Termux; `redis_compat.php` подключается только если `extension_loaded('redis')` вернул `false`, и только если Redis действительно слушает порт (проверка `fsockopen`)
+- **`DISABLE_MYSQL_RESTART`** → на Termux нет root/sudo для перезапуска MySQL через `cycle.php`, эта возможность отключается
+- **Watchdog** (`watchdog.sh`) → следит за `php-cgi` и дочерними процессами `cycle_*`, перезапускает при падении; логи в `~/htdocs/cycle_cached/`
+- **`restart.sh`** → ручной перезапуск всех сервисов одной командой, без повторного прохода полного инсталлятора
 
-## Подробная документация
+## Известные ограничения
 
-См. [majordomo_termux_guide.md](majordomo_termux_guide.md)
+- Android может выгружать процессы Termux в фоне — для надёжной работы нужно отключить оптимизацию батареи для Termux и держать foreground-уведомление активным
+
+## Разработка / вклад
+
+Android-специфичные патчи (поведение lighttpd, окружение Termux) остаются в этом репозитории. Исправления логики и совместимости с PHP 8, пригодные для всех платформ, отправляются upstream-PR в [sergejey/majordomo](https://github.com/sergejey/majordomo) (ветка `alpha`).
