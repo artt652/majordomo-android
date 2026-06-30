@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Логи — Majordomo</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0a0e14;
+  --surface:  #0f1419;
+  --panel:    #141b24;
+  --border:   #1e2a38;
+  --accent:   #4d9de0;
+  --green:    #3ddc84;
+  --yellow:   #ffb347;
+  --red:      #ff5c5c;
+  --dim:      #8899aa;
+  --text:     #cdd6e0;
+  --mono:     'JetBrains Mono', 'Fira Mono', 'Consolas', monospace;
+  --sans:     -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── TOP BAR ── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.topbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.topbar-title span { color: var(--dim); font-weight: 400; }
+
+.search-wrap {
+  flex: 1;
+  min-width: 160px;
+  position: relative;
+}
+
+.search-wrap input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 32px 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--mono);
+  outline: none;
+}
+
+.search-wrap input:focus { border-color: var(--accent); }
+
+.search-clear {
+  position: absolute;
+  right: 8px; top: 50%;
+  transform: translateY(-50%);
+  background: none; border: none;
+  color: var(--dim); cursor: pointer;
+  font-size: 16px; line-height: 1;
+  display: none;
+}
+
+.filter-pills {
+  display: flex;
+  gap: 4px;
+}
+
+.pill {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: var(--panel);
+  color: var(--dim);
+  transition: all 0.15s;
+}
+
+.pill:hover { border-color: var(--border); color: var(--text); }
+.pill.active-all    { background: var(--accent); color: #000; }
+.pill.active-error  { background: var(--red);    color: #fff; }
+.pill.active-warning{ background: var(--yellow); color: #000; }
+.pill.active-success{ background: var(--green);  color: #000; }
+
+.topbar-actions { display: flex; gap: 6px; }
+
+button.btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.btn:hover { border-color: var(--accent); color: var(--accent); }
+button.btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+/* ── LAYOUT ── */
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 220px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.sidebar-group {
+  padding: 8px 0 4px;
+}
+
+.sidebar-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--dim);
+  padding: 0 12px 4px;
+  text-transform: uppercase;
+}
+
+.log-item {
+  padding: 7px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all 0.12s;
+}
+
+.log-item:hover { background: var(--panel); }
+
+.log-item.active {
+  background: var(--panel);
+  border-left-color: var(--accent);
+}
+
+.log-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-item-meta {
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 2px;
+  display: flex;
+  gap: 6px;
+}
+
+.log-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--border);
+  color: var(--dim);
+}
+
+/* ── LOG PANEL ── */
+.log-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.log-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--dim);
+  flex-shrink: 0;
+}
+
+.log-info-bar strong { color: var(--text); }
+
+.stats { display: flex; gap: 12px; }
+.stat-error   { color: var(--red); }
+.stat-warning { color: var(--yellow); }
+.stat-success { color: var(--green); }
+
+.log-lines {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.log-line {
+  display: flex;
+  align-items: baseline;
+  padding: 1px 14px;
+  gap: 10px;
+  border-left: 2px solid transparent;
+  transition: background 0.1s;
+}
+
+.log-line:hover { background: var(--panel); }
+
+.log-line.error   { border-left-color: var(--red);    background: rgba(255,92,92,0.05); }
+.log-line.warning { border-left-color: var(--yellow); background: rgba(255,179,71,0.05); }
+.log-line.success { border-left-color: var(--green);  background: rgba(61,220,132,0.05); }
+
+.line-n {
+  color: var(--border);
+  min-width: 36px;
+  text-align: right;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.line-text {
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+}
+
+/* подсветка */
+.hl-time    { color: #7fbfff; }
+.hl-error   { color: var(--red); font-weight: 600; }
+.hl-warning { color: var(--yellow); }
+.hl-success { color: var(--green); }
+.hl-path    { color: #9d8fff; }
+.hl-match   { background: #ffb34740; border-radius: 2px; }
+.hl-num     { color: #e8a87c; }
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--dim);
+  font-size: 13px;
+  gap: 8px;
+}
+
+.empty-icon { font-size: 32px; opacity: 0.3; }
+
+.load-more {
+  text-align: center;
+  padding: 12px;
+}
+
+.load-more button {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  padding: 6px 20px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.load-more button:hover { border-color: var(--accent); color: var(--accent); }
+
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+
+@media (max-width: 600px) {
+  .sidebar { width: 160px; }
+  .topbar { padding: 8px; gap: 8px; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-title">Логи <span>Majordomo</span></div>
+
+  <select id="dateFilter" onchange="onDateFilter()" style="background:var(--panel);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;cursor:pointer;outline:none;">
+    <option value="">Все даты</option>
+  </select>
+
+  <div class="search-wrap">
+    <input type="text" id="searchInput" placeholder="Поиск по логам..." oninput="onSearch()">
+    <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
+  </div>
+
+  <div class="filter-pills">
+    <div class="pill active-all" data-level="" onclick="setLevel(this, '')">Все</div>
+    <div class="pill" data-level="error" onclick="setLevel(this, 'error')">Ошибки</div>
+    <div class="pill" data-level="warning" onclick="setLevel(this, 'warning')">Внимание</div>
+    <div class="pill" data-level="success" onclick="setLevel(this, 'success')">Успех</div>
+  </div>
+
+  <div class="topbar-actions">
+    <button class="btn" onclick="loadLog()">↻ Обновить</button>
+    <button class="btn" onclick="autoRefreshToggle()" id="autoBtn">▶ Авто</button>
+    <button class="btn danger" onclick="clearLog()">🗑 Очистить</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar" id="sidebar">
+    <div class="empty" style="height:100px">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <div class="log-panel">
+    <div class="log-info-bar">
+      <div id="logTitle">Выберите лог</div>
+      <div class="stats">
+        <span class="stat-error" id="statError">0 ошибок</span>
+        <span class="stat-warning" id="statWarn">0 предупреждений</span>
+        <span class="stat-success" id="statOk">0 успешных</span>
+        <span id="statTotal"></span>
+      </div>
+    </div>
+
+    <div class="log-lines" id="logLines">
+      <div class="empty">
+        <div class="empty-icon">📋</div>
+        <div>Выберите лог в боковой панели</div>
+      </div>
+    </div>
+
+    <div class="load-more" id="loadMore" style="display:none">
+      <button onclick="loadMore()">Загрузить ещё</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'log_api.php';
+let currentLog = null;
+let currentSearch = '';
+let currentLevel = '';
+let currentDate = new Date().toISOString().slice(0, 10); // сегодня по умолчанию
+let allLines = [];
+let displayedLines = [];
+let autoTimer = null;
+let autoOn = false;
+let allLogs = [];
+const PAGE = 300;
+
+// ── INIT ──
+async function init() {
+  const res = await fetch(API + '?action=list');
+  const data = await res.json();
+  renderSidebar(data.logs || []);
+}
+
+function renderSidebar(logs) {
+  allLogs = logs;
+
+  // Заполняем селектор дат
+  const dates = [...new Set(logs.map(l => l.date))].sort().reverse();
+  const sel = document.getElementById('dateFilter');
+  sel.innerHTML = '<option value="">Все даты</option>' +
+    dates.map(d => `<option value="${d}" ${d === currentDate ? 'selected' : ''}>${d}</option>`).join('');
+
+  // Фильтруем по выбранной дате
+  const filtered = currentDate ? logs.filter(l => l.date === currentDate) : logs;
+
+  const groups = {};
+  filtered.forEach(l => {
+    if (!groups[l.group]) groups[l.group] = [];
+    groups[l.group].push(l);
+  });
+
+  let html = '';
+  for (const [group, items] of Object.entries(groups)) {
+    html += `<div class="sidebar-group">
+      <div class="sidebar-group-label">${group}</div>`;
+    items.forEach(l => {
+      const kb = l.size > 0 ? (l.size / 1024).toFixed(1) + ' KB' : '0 B';
+      html += `<div class="log-item" data-id="${l.id}" onclick="selectLog('${l.id}', this)">
+        <div class="log-item-name">${l.name}</div>
+        <div class="log-item-meta">
+          <span>${l.date}</span>
+          <span class="log-badge">${l.lines} стр</span>
+          <span>${kb}</span>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  document.getElementById('sidebar').innerHTML = html || '<div class="empty" style="height:80px;font-size:11px">Нет логов</div>';
+}
+
+async function selectLog(id, el) {
+  document.querySelectorAll('.log-item').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  currentLog = id;
+  await loadLog();
+}
+
+async function loadLog() {
+  if (!currentLog) return;
+  document.getElementById('logLines').innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  document.getElementById('loadMore').style.display = 'none';
+
+  const params = new URLSearchParams({
+    action: 'read',
+    id: currentLog,
+    search: currentSearch,
+    level: currentLevel,
+    limit: 2000,
+    offset: 0
+  });
+
+  const res = await fetch(API + '?' + params);
+  const data = await res.json();
+
+  if (data.error) {
+    document.getElementById('logLines').innerHTML =
+      `<div class="empty"><div class="empty-icon">⚠️</div><div>${data.error}</div></div>`;
+    return;
+  }
+
+  allLines = data.lines || [];
+  displayedLines = allLines.slice(0, PAGE);
+
+  const name = currentLog.split('/').pop();
+  let titleHtml = `<strong>${name}</strong> · ${data.total} строк`;
+  if (data.truncated) {
+    titleHtml += ` <span style="color:var(--yellow);font-size:11px">⚠ показаны последние 1000 из ${data.total_file}</span>`;
+  }
+  document.getElementById('logTitle').innerHTML = titleHtml;
+
+  updateStats();
+  renderLines(displayedLines, true);
+
+  if (allLines.length > PAGE) {
+    document.getElementById('loadMore').style.display = 'block';
+  }
+}
+
+function loadMore() {
+  const next = allLines.slice(displayedLines.length, displayedLines.length + PAGE);
+  displayedLines = displayedLines.concat(next);
+  renderLines(displayedLines, true);
+  if (displayedLines.length >= allLines.length) {
+    document.getElementById('loadMore').style.display = 'none';
+  }
+}
+
+function updateStats() {
+  const err  = allLines.filter(l => l.level === 'error').length;
+  const warn = allLines.filter(l => l.level === 'warning').length;
+  const ok   = allLines.filter(l => l.level === 'success').length;
+  document.getElementById('statError').textContent = err + ' ошибок';
+  document.getElementById('statWarn').textContent  = warn + ' предупреждений';
+  document.getElementById('statOk').textContent    = ok + ' успешных';
+  document.getElementById('statTotal').textContent = allLines.length + ' всего';
+}
+
+function renderLines(lines, replace) {
+  const container = document.getElementById('logLines');
+  const search = currentSearch.toLowerCase();
+
+  if (!lines.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div>Ничего не найдено</div></div>';
+    return;
+  }
+
+  const html = lines.map(l => {
+    let text = escHtml(l.text);
+    text = highlightLine(text, search);
+    return `<div class="log-line ${l.level}">
+      <span class="line-n">${l.n}</span>
+      <span class="line-text">${text}</span>
+    </div>`;
+  }).join('');
+
+  if (replace) {
+    container.innerHTML = html;
+  } else {
+    container.insertAdjacentHTML('beforeend', html);
+  }
+}
+
+function highlightLine(text, search) {
+  // Время в начале строки
+  text = text.replace(/^(\d{2}:\d{2}:\d{2}[\s\d.]*)/,
+    '<span class="hl-time">$1</span>');
+
+  // Пути к файлам
+  text = text.replace(/(\/[a-zA-Z0-9_./:-]+\.php(?::\d+)?)/g,
+    '<span class="hl-path">$1</span>');
+
+  // Ключевые слова
+  const errKw = /\b(error|exception|fatal|failed|ошибка|упал)\b/gi;
+  const warnKw = /\b(warning|deprecated|notice|внимание|предупреждение)\b/gi;
+  const okKw = /\b(ok|success|connected|started|запущен|готово)\b/gi;
+
+  text = text.replace(errKw, '<span class="hl-error">$1</span>');
+  text = text.replace(warnKw, '<span class="hl-warning">$1</span>');
+  text = text.replace(okKw, '<span class="hl-success">$1</span>');
+
+  // Числа
+  text = text.replace(/\b(\d+\.\d+)\b/g, '<span class="hl-num">$1</span>');
+
+  // Подсветка поиска
+  if (search) {
+    const re = new RegExp(escRe(search), 'gi');
+    text = text.replace(re, m => `<span class="hl-match">${m}</span>`);
+  }
+
+  return text;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function escRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ── CONTROLS ──
+function onDateFilter() {
+  currentDate = document.getElementById('dateFilter').value;
+  renderSidebar(allLogs);
+}
+
+let searchTimer = null;
+function onSearch() {
+  const val = document.getElementById('searchInput').value;
+  document.getElementById('searchClear').style.display = val ? 'block' : 'none';
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    currentSearch = val;
+    loadLog();
+  }, 300);
+}
+
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').style.display = 'none';
+  currentSearch = '';
+  loadLog();
+}
+
+function setLevel(el, level) {
+  document.querySelectorAll('.pill').forEach(p => {
+    p.className = 'pill';
+  });
+  currentLevel = level;
+  if (!level) el.classList.add('active-all');
+  else if (level === 'error')   el.classList.add('active-error');
+  else if (level === 'warning') el.classList.add('active-warning');
+  else if (level === 'success') el.classList.add('active-success');
+  loadLog();
+}
+
+function autoRefreshToggle() {
+  autoOn = !autoOn;
+  const btn = document.getElementById('autoBtn');
+  if (autoOn) {
+    btn.textContent = '⏸ Авто';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    autoTimer = setInterval(loadLog, 5000);
+  } else {
+    btn.textContent = '▶ Авто';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+    clearInterval(autoTimer);
+  }
+}
+
+async function clearLog() {
+  if (!currentLog) return;
+  if (!confirm('Очистить лог?')) return;
+  await fetch(API + '?action=clear&id=' + encodeURIComponent(currentLog));
+  loadLog();
+}
+
+// ── START ──
+init();
+</script>
+</body>
+</html>
