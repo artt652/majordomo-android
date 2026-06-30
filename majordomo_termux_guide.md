@@ -22,7 +22,7 @@ Majordomo — PHP-система домашней автоматизации. Э
 Android
 └── Termux
     ├── MariaDB         (база данных, TCP 127.0.0.1:3306)
-    ├── Redis           (кэш состояний устройств, TCP 127.0.0.1:6379)
+    ├── Redis           (кэш состояний устройств, TCP 127.0.0.1:6379, без RDB-снапшотов)
     ├── php-cgi         (FastCGI через TCP 127.0.0.1:9000)
     ├── lighttpd        (веб-сервер, порт 8080)
     ├── cycle.php       (основной демон Majordomo)
@@ -42,7 +42,8 @@ Android
 | DB_HOST | localhost | **127.0.0.1** (TCP вместо unix socket) |
 | mysqldump | /usr/bin/mysqldump | mariadb-dump |
 | Redis клиент | php-redis расширение | **Predis** (чистый PHP, только если нет ext-redis) |
-| Перезапуск MySQL из веб-панели | через sudo | **отключён** (`DISABLE_MYSQL_RESTART`) |
+| Redis персистентность | RDB снапшоты включены | **отключены** (`save ""`) |
+| Перезапуск MySQL из веб-панели | через sudo | пока не используется (`DISABLE_MYSQL_RESTART` закомментирован — не реализовано в upstream) |
 | Автозапуск | systemd | Termux:Boot |
 | cycle.php | systemd service | nohup напрямую |
 
@@ -61,6 +62,10 @@ PHP-FPM и php-cgi при старте пытаются создать lock че
 `php-redis` в Termux скомпилирован под другую версию PHP API и несовместим. Используется **Predis** — чистый PHP клиент. Враппер `lib/redis_compat.php` эмулирует класс `Redis` через Predis прозрачно для Majordomo, но подключается только если:
 1. расширение `redis` не загружено (`!extension_loaded('redis')`), и
 2. Redis реально слушает порт 6379 на момент старта (`fsockopen`-проверка) — иначе `USE_REDIS` вообще не определяется, и Majordomo работает без Redis-кэша.
+
+## Почему Redis запускается без RDB-снапшотов
+
+Данные в Redis (кэш состояний устройств) нужны только пока система работает и пересоздаются заново при каждом запуске — сохранять их на диск не требуется. К тому же периодические фоновые записи снапшотов на Android без root могут завершаться ошибкой записи или просто зря нагружать флеш-память. Поэтому `redis-server` запускается с конфигом `$PREFIX/etc/redis.conf`, где `save ""` отключает периодический bgsave.
 
 ---
 
@@ -98,6 +103,17 @@ max_input_time = 180
 
 Без отключения OPcache — php-cgi падает с `Permission denied`. Без подавления warnings — циклы роняются на PHP 8 предупреждениях. Лимиты загрузки увеличены под рекомендации Majordomo (модули с файлами/бэкапами).
 
+### Шаг 2.1: Настройка Redis
+
+```ini
+save ""
+stop-writes-on-bgsave-error no
+appendonly no
+loglevel warning
+```
+
+Конфиг скачивается из репозитория (`config/redis.conf`), при недоступности сети генерируется локально тем же содержимым. Сохраняется в `$PREFIX/etc/redis.conf` и используется при каждом запуске `redis-server` (и в boot-скрипте, и при ручном запуске/перезапуске).
+
 ### Шаг 3: Запуск MariaDB
 
 Проверяется по процессу. Если уже запущена — пропускается.
@@ -115,7 +131,9 @@ composer require predis/predis
 
 Если папка `~/htdocs` уже существует, скрипт спрашивает подтверждение на перезапись (удаление и повторное клонирование) — старая установка по умолчанию не трогается.
 
-Автоматически скачиваются: `lib/redis_compat.php`, `watchdog.sh`, `restart.sh`, и в подпапку `tools/`: `tinyfilemanager.php` (из апстрима prasathmani/tinyfilemanager), `redis_api.php`, `redis_monitor.html`.
+Автоматически скачиваются:
+- в корень `~/htdocs/`: `lib/redis_compat.php`, `watchdog.sh`, `restart.sh`, `start.sh`, `stop.sh`
+- в `~/htdocs/tools/`: `tinyfilemanager.php` (из апстрима prasathmani/tinyfilemanager), `redis_api.php`, `redis_monitor.html`, `log_api.php`, `log_viewer.html`, `process_api.php`, `process_manager.html`
 
 ### Шаг 7: config.php
 
@@ -150,7 +168,7 @@ Boot скрипт `~/.termux/boot/majordomo.sh`:
 ```
 1. Остановка старых процессов  (защита от двойного запуска)
 2. MariaDB     (sleep 8)
-3. Redis       (sleep 1)
+3. Redis       (конфиг $PREFIX/etc/redis.conf, sleep 1)
 4. php-cgi     (TCP 127.0.0.1:9000, sleep 3, ОБЯЗАТЕЛЬНО до lighttpd!)
 5. lighttpd
 6. cycle.php
@@ -161,7 +179,7 @@ Boot скрипт `~/.termux/boot/majordomo.sh`:
 
 ### Шаг 11: Запуск
 
-Скрипт ждёт до 3 минут пока cycle.php запустится и **не прерывается** при таймауте — watchdog перезапустит автоматически.
+Тот же порядок, что и в boot-скрипте: Redis (с проверкой, что процесс реально поднялся), php-cgi, lighttpd, cycle.php, watchdog. Скрипт ждёт до 3 минут пока cycle.php запустится и **не прерывается** при таймауте — watchdog перезапустит автоматически.
 
 ### Шаг 12: Проверка
 
@@ -178,6 +196,8 @@ curl -s http://127.0.0.1:8080/ | head -3
 - **phpMyAdmin:** `http://IP:8080/phpmyadmin/` (root / пароль из установки)
 - **TinyFileManager:** `http://IP:8080/tools/tinyfilemanager.php` (admin / admin@123 — сменить пароль по умолчанию после первого входа!)
 - **Redis монитор:** `http://IP:8080/tools/redis_monitor.html`
+- **Просмотр логов:** `http://IP:8080/tools/log_viewer.html`
+- **Менеджер процессов:** `http://IP:8080/tools/process_manager.html`
 - **WebSocket:** порт `8001` (прямое подключение браузера)
 
 IP устройства:
@@ -216,12 +236,14 @@ ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 
 ## Ручной перезапуск
 
-Рекомендуется через готовый скрипт:
+Рекомендуется через готовые скрипты:
 ```bash
-bash ~/htdocs/restart.sh
+bash ~/htdocs/restart.sh   # полный перезапуск всех сервисов
+bash ~/htdocs/stop.sh      # остановить всё
+bash ~/htdocs/start.sh     # запустить всё
 ```
 
-Вручную (если `restart.sh` недоступен):
+Вручную (если скрипты недоступны):
 ```bash
 pkill lighttpd 2>/dev/null
 pkill php-cgi 2>/dev/null
@@ -238,15 +260,7 @@ bash ~/.termux/boot/majordomo.sh
 
 ## Обновление Majordomo
 
-Обновление через штатные средства — модуль **saverestore** или **Маркет дополнений** в веб-интерфейсе. Файлы ядра не модифицированы (Android-специфичные правки живут отдельно от апстрима, см. раздел ниже).
-
-После обновления:
-```bash
-pkill -f "cycle.php" && sleep 2
-nohup php -d opcache.enable=0 ~/htdocs/cycle.php \
-    > ~/htdocs/cycle_cached/cycle.log 2>&1 &
-echo $! > ~/htdocs/cycle_cached/cycle.php.lock
-```
+Обновление через штатные средства — модуль **saverestore** или **Маркет дополнений** в веб-интерфейсе. Файлы ядра не модифицированы
 
 ---
 
@@ -313,6 +327,15 @@ grep "USE_REDIS" ~/htdocs/config.php                     # определена 
 ```
 Если процесс не запущен или порт недоступен на момент старта php-cgi/cycle.php — `USE_REDIS` не определится, и Majordomo продолжит работу без Redis (это штатное поведение, не ошибка).
 
+### Redis не подхватывает конфиг без RDB
+```bash
+ps aux | grep "[r]edis-server"          # проверить, с каким файлом запущен процесс
+cat $PREFIX/etc/redis.conf              # должна быть строка save ""
+pkill redis-server; sleep 1
+redis-server $PREFIX/etc/redis.conf > /dev/null 2>&1 &
+```
+Если `redis-server` был когда-то запущен вручную без аргумента `$PREFIX/etc/redis.conf` (например, голой командой `redis-server &`), он использует дефолтные настройки с включёнными RDB-снапшотами.
+
 ---
 
 ## Логи
@@ -331,12 +354,19 @@ grep "USE_REDIS" ~/htdocs/config.php                     # определена 
 |---|---|
 | `~/htdocs/lib/redis_compat.php` | Враппер Redis через Predis (условный, см. config.php) |
 | `~/htdocs/watchdog.sh` | Watchdog для php-cgi и дочерних cycle_* |
-| `~/htdocs/restart.sh` | Скрипт ручного перезапуска всех сервисов |
+| `~/htdocs/restart.sh` | Скрипт полного перезапуска всех сервисов |
+| `~/htdocs/start.sh` | Скрипт запуска всех сервисов |
+| `~/htdocs/stop.sh` | Скрипт остановки всех сервисов |
 | `~/htdocs/tools/tinyfilemanager.php` | Файловый менеджер |
 | `~/htdocs/tools/redis_api.php` | API для монитора Redis |
 | `~/htdocs/tools/redis_monitor.html` | Дашборд мониторинга Redis |
+| `~/htdocs/tools/log_api.php` | API для просмотра логов |
+| `~/htdocs/tools/log_viewer.html` | Просмотрщик логов |
+| `~/htdocs/tools/process_api.php` | API для менеджера процессов |
+| `~/htdocs/tools/process_manager.html` | Менеджер процессов |
 | `~/.termux/boot/majordomo.sh` | Автозапуск (Termux:Boot) |
 | `$PREFIX/etc/php/conf.d/opcache_off.ini` | Настройки PHP (генерируется инлайн) |
+| `$PREFIX/etc/redis.conf` | Конфиг Redis без RDB-снапшотов (скачивается из репозитория или генерируется инлайн) |
 | `$PREFIX/etc/lighttpd/lighttpd.conf` | Конфиг веб-сервера (скачивается из репозитория) |
 | `$PREFIX/etc/mysql/conf.d/disable_strict_mode.cnf` | Отключение strict mode (генерируется инлайн) |
 | `$PREFIX/share/phpmyadmin/config.inc.php` | Конфиг phpMyAdmin (генерируется инлайн) |
