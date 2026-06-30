@@ -419,7 +419,7 @@ mkdir -p "$HOME_DIR/.termux/boot"
 cat > "$HOME_DIR/.termux/boot/majordomo.sh" << 'BOOTEOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # Автозапуск Majordomo (Termux:Boot — установить из F-Droid)
-
+termux-wake-lock
 PREFIX=/data/data/com.termux/files/usr
 HTDOCS=/data/data/com.termux/files/home/htdocs
 
