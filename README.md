@@ -7,7 +7,7 @@
 ## Быстрая установка
 
 ```bash
-pkg install wget iproute2 -y
+pkg install wget -y
 wget -O ~/install_majordomo.sh \
     https://raw.githubusercontent.com/artt652/majordomo-android/main/install_majordomo_termux.sh
 chmod +x ~/install_majordomo.sh
@@ -49,8 +49,9 @@ OPcache/error_reporting, отключение MySQL strict mode и конфиг 
 
 IP устройства (для доступа с других устройств в той же сети):
 ```bash
-ip route get 1 | awk '{print $7; exit}'
+ifconfig | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1
 ```
+`ip route get 1` на части устройств Termux без root возвращает `Permission denied` (ограничение netlink-сокета), поэтому используется `ifconfig` (из пакета `net-tools`, ставится инсталлятором).
 
 ## Требования
 
@@ -71,6 +72,7 @@ ip route get 1 | awk '{print $7; exit}'
 
 ## Известные ограничения
 
+- Первый запуск `cycle.php` может занимать до 3 минут из-за `CHECK TABLE` по всем таблицам БД
 - Android может выгружать процессы Termux в фоне — для надёжной работы нужно отключить оптимизацию батареи для Termux и держать foreground-уведомление активным
 
 ## Разработка / вклад
