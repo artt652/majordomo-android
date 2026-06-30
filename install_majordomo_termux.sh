@@ -228,17 +228,21 @@ Define('GETURL_WARNING_TIMEOUT', 5);
 Define('ENABLE_PANEL_ACCELERATION', 1);
 
 // Termux: отключаем перезапуск MySQL через sudo (нет root)
+//еще не реализовано в upstream
 define('DISABLE_MYSQL_RESTART', true);
 
-// Redis через Predis враппер (php-redis несовместим с Termux PHP API)
-define('USE_REDIS', '127.0.0.1');
-
+// Redis: Predis враппер вместо php-redis (несовместим с Termux)
+// USE_REDIS определяется только если Redis доступен на порту
 if (file_exists(DOC_ROOT . '/vendor/autoload.php')) {
     require_once DOC_ROOT . '/vendor/autoload.php';
 }
-if (file_exists(DOC_ROOT . '/lib/redis_compat.php')) {
+if (!extension_loaded('redis') && file_exists(DOC_ROOT . '/lib/redis_compat.php')) {
     require_once DOC_ROOT . '/lib/redis_compat.php';
 }
+if (@fsockopen('127.0.0.1', 6379, $errno, $errstr, 1)) {
+    define('USE_REDIS', '127.0.0.1');
+}
+
 CONFIGEOF
 
 echo "config.php создан"
