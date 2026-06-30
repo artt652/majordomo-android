@@ -57,6 +57,24 @@ EOF
 echo "OPcache отключён, error_reporting и лимиты настроены"
 
 # =============================================================
+# ШАГ 2.1: Настройка Redis (отключение RDB снапшотов)
+# Android не даёт надёжно писать RDB-снапшоты на диск без root —
+# отключаем bgsave, кэш Majordomo в Redis эфемерный
+# =============================================================
+echo ""
+echo ">>> Настройка Redis..."
+wget -q -O $PREFIX/etc/redis.conf \
+    "$REPO/config/redis.conf" \
+    && echo "redis.conf скачан" \
+    || cat > $PREFIX/etc/redis.conf << 'REDISCONFEOF'
+save ""
+stop-writes-on-bgsave-error no
+appendonly no
+loglevel warning
+REDISCONFEOF
+echo "Redis настроен: RDB снапшоты отключены"
+
+# =============================================================
 # ШАГ 3: Запуск MariaDB
 # =============================================================
 echo ""
@@ -244,7 +262,7 @@ Define('ENABLE_PANEL_ACCELERATION', 1);
 
 // Termux: отключаем перезапуск MySQL через sudo (нет root)
 //еще не реализовано в upstream
-define('DISABLE_MYSQL_RESTART', true);
+//define('DISABLE_MYSQL_RESTART', true);
 
 // Redis: Predis враппер вместо php-redis (несовместим с Termux)
 // USE_REDIS определяется только если Redis доступен на порту
@@ -365,8 +383,8 @@ sleep 2
 mariadbd-safe --datadir=$PREFIX/var/lib/mysql > /dev/null 2>&1 &
 sleep 8
 
-# Redis
-redis-server > /dev/null 2>&1 &
+# Redis (конфиг без RDB снапшотов — Android не даёт надёжно писать на диск)
+redis-server $PREFIX/etc/redis.conf > /dev/null 2>&1 &
 sleep 1
 
 # php-cgi через TCP (SELinux на Android блокирует Unix socket для дочерних процессов)
@@ -398,10 +416,16 @@ echo "Автозапуск: ~/.termux/boot/majordomo.sh"
 echo ""
 echo ">>> ШАГ 11: Запуск сервисов..."
 
+pkill redis-server 2>/dev/null || true
 pkill php-cgi 2>/dev/null || true
 pkill lighttpd 2>/dev/null || true
 pkill -f "cycle.php" 2>/dev/null || true
 sleep 2
+
+# Redis (конфиг без RDB снапшотов)
+redis-server $PREFIX/etc/redis.conf > /dev/null 2>&1 &
+sleep 1
+ps aux | grep -q "[r]edis-server" && echo "redis-server: OK" || echo "ВНИМАНИЕ: redis-server не запустился"
 
 # php-cgi через TCP (ДО lighttpd!)
 PHP_FCGI_CHILDREN=4 \
@@ -430,7 +454,7 @@ nohup php -d opcache.enable=0 "$HTDOCS/cycle.php" \
 CYC_PID=$!
 echo "$CYC_PID" > "$LOGS/cycle.php.lock"
 
-echo "Ожидание запуска cycle.php"
+echo "Ожидание запуска cycle.php..."
 WAITED=0
 while [ $WAITED -lt 180 ]; do
     sleep 5
@@ -467,7 +491,7 @@ mariadb -u root -p"$MYSQL_PASS" -e \
     "SELECT COUNT(*) as 'Таблиц в БД' FROM information_schema.tables \
      WHERE table_schema='db_terminal';" 2>/dev/null
 
-IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || \
+IP=$(python3 -c "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(('8.8.8.8', 80)); print(s.getsockname()[0]); s.close()" 2>/dev/null || \
      ifconfig 2>/dev/null | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -1)
 
 echo ""
