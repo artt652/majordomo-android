@@ -6,7 +6,7 @@ header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
 ini_set('memory_limit', '8M');
-set_time_limit(4);
+set_time_limit(8);
 
 $ping = shell_exec('timeout 2 redis-cli ping 2>/dev/null');
 if (trim($ping) !== 'PONG') {
@@ -39,8 +39,34 @@ if (isset($_GET['keys'])) {
     $keysRaw = shell_exec('timeout 2 redis-cli keys "mjd:*" 2>/dev/null');
     $keys = array_filter(array_map('trim', explode("\n", $keysRaw ?? '')));
     foreach (array_slice(array_values($keys), 0, 10) as $key) {
-        $val = shell_exec('timeout 1 redis-cli get ' . escapeshellarg($key) . ' 2>/dev/null');
-        $mjdData[] = ['key' => $key, 'value' => trim($val ?? '')];
+        // GET применим только к строкам; для list/hash/set/zset он даёт WRONGTYPE.
+        // Сначала определяем тип, затем читаем подходящей командой.
+        $type = trim(shell_exec('timeout 1 redis-cli type ' . escapeshellarg($key) . ' 2>/dev/null') ?? '');
+        switch ($type) {
+            case 'string':
+                $val = trim(shell_exec('timeout 1 redis-cli get ' . escapeshellarg($key) . ' 2>/dev/null') ?? '');
+                break;
+            case 'list':
+                $len   = (int)shell_exec('timeout 1 redis-cli llen ' . escapeshellarg($key) . ' 2>/dev/null');
+                $items = trim(shell_exec('timeout 1 redis-cli lrange ' . escapeshellarg($key) . ' 0 2 2>/dev/null') ?? '');
+                $val   = 'list(' . $len . '): ' . str_replace("\n", ' | ', $items);
+                break;
+            case 'hash':
+                $len = (int)shell_exec('timeout 1 redis-cli hlen ' . escapeshellarg($key) . ' 2>/dev/null');
+                $val = 'hash(' . $len . ' полей)';
+                break;
+            case 'set':
+                $len = (int)shell_exec('timeout 1 redis-cli scard ' . escapeshellarg($key) . ' 2>/dev/null');
+                $val = 'set(' . $len . ')';
+                break;
+            case 'zset':
+                $len = (int)shell_exec('timeout 1 redis-cli zcard ' . escapeshellarg($key) . ' 2>/dev/null');
+                $val = 'zset(' . $len . ')';
+                break;
+            default:
+                $val = '(' . ($type !== '' ? $type : 'unknown') . ')';
+        }
+        $mjdData[] = ['key' => $key, 'value' => $val];
     }
 }
 
