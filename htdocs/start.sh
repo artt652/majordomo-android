@@ -44,13 +44,13 @@ else
 fi
 
 # lighttpd
-if ps aux | grep -q "[l]ighttpd"; then
+if pgrep -x lighttpd > /dev/null; then
     echo "lighttpd: уже запущен"
 else
     echo "Запускаем lighttpd..."
     lighttpd -f $PREFIX/etc/lighttpd/lighttpd.conf
     sleep 2
-    ps aux | grep -q "[l]ighttpd" && echo "lighttpd: OK" || {
+    pgrep -x lighttpd > /dev/null && echo "lighttpd: OK" || {
         echo "ОШИБКА: lighttpd не запустился!"
         tail -5 "$HTDOCS/cycle_cached/lighttpd_error.log"
         exit 1
